@@ -20,7 +20,7 @@ class DriftFinding:
 class ValidationResult:
     url: str
     spec_version: Optional[str] = None
-    is_compliant: bool = False
+    is_compliant: bool = True
     drift: list[DriftFinding] = field(default_factory=list)
     jsonrpc_compliant: Optional[bool] = None
     response_time_ms: Optional[float] = None
@@ -49,7 +49,7 @@ class AgentCardChecker:
         try:
             response = httpx.get(self.url, timeout=self.timeout, follow_redirects=True)
             response.raise_for_status()
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, Exception) as e:
             result.error = f"Failed to fetch agent card: {e}"
             result.add_drift("fetch-error", "error", result.error)
             return result
@@ -144,7 +144,7 @@ class EndpointProber:
             
             try:
                 resp_json = response.json()
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, Exception):
                 result.add_drift(
                     "jsonrpc-conformance",
                     "error",
