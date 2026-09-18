@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "a2a-drift"
+version = "0.1.0"
+description = "Detect A2A (Agent2Agent) protocol compliance drift — agent cards, endpoints, spec versions, JSON-RPC conformance"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [{name = "Yunare Maia", email = "yunare@gmail.com"}]
+dependencies = [
+    "httpx>=0.27",
+]
+
+[project.scripts]
+a2a-drift = "cli:main"
+
+[tool.setuptools.packages.find]
+include = ["a2a_drift*"]
