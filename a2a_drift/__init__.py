@@ -6,6 +6,10 @@ from typing import Optional
 from dataclasses import dataclass, field
 import httpx
 import json
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -25,11 +29,23 @@ class ValidationResult:
     jsonrpc_compliant: Optional[bool] = None
     response_time_ms: Optional[float] = None
     error: Optional[str] = None
+    attempts: int = 0
 
     def add_drift(self, drift_type: str, severity: str, message: str, path: Optional[str] = None):
         self.drift.append(DriftFinding(drift_type, severity, message, path))
         if severity == "error":
             self.is_compliant = False
+
+
+def _should_retry(exc: Exception) -> bool:
+    """Determine if an HTTP exception is retryable."""
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    if isinstance(exc, (httpx.ConnectError, httpx.RemoteProtocolError)):
+        return True
+    return False
 
 
 class AgentCardChecker:
@@ -39,19 +55,36 @@ class AgentCardChecker:
     SPEC_VERSIONS = ["0.3", "1.0"]
     CURRENT_SPEC = "1.0"
 
-    def __init__(self, url: str, timeout: float = 10.0):
+    def __init__(self, url: str, timeout: float = 10.0, max_retries: int = 3):
         self.url = url
         self.timeout = timeout
+        self.max_retries = max_retries
 
     def validate(self) -> ValidationResult:
         result = ValidationResult(url=self.url)
         
-        try:
-            response = httpx.get(self.url, timeout=self.timeout, follow_redirects=True)
-            response.raise_for_status()
-        except (httpx.HTTPError, Exception) as e:
-            result.error = f"Failed to fetch agent card: {e}"
-            result.add_drift("fetch-error", "error", result.error)
+        last_error = None
+        for attempt in range(self.max_retries):
+            try:
+                response = httpx.get(self.url, timeout=self.timeout, follow_redirects=True)
+                response.raise_for_status()
+                result.attempts = attempt + 1
+                break
+            except (httpx.HTTPError, Exception) as e:
+                last_error = e
+                if _should_retry(e) and attempt < self.max_retries - 1:
+                    delay = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    result.error = f"Failed to fetch agent card: {e}"
+                    result.add_drift("fetch-error", "error", result.error)
+                    result.attempts = attempt + 1
+                    return result
+        
+        if last_error and result.error:
+            result.attempts = self.max_retries
             return result
         
         try:
@@ -108,9 +141,10 @@ class AgentCardChecker:
 class EndpointProber:
     """Probe a live A2A endpoint for JSON-RPC conformance."""
 
-    def __init__(self, endpoint_url: str, timeout: float = 10.0):
+    def __init__(self, endpoint_url: str, timeout: float = 10.0, max_retries: int = 3):
         self.endpoint_url = endpoint_url
         self.timeout = timeout
+        self.max_retries = max_retries
 
     def probe(self, method: str, params: Optional[dict] = None) -> ValidationResult:
         result = ValidationResult(url=self.endpoint_url)
@@ -122,75 +156,89 @@ class EndpointProber:
             "id": 1
         }
         
-        try:
-            import time
-            start = time.time()
-            response = httpx.post(
-                self.endpoint_url,
-                json=payload,
-                timeout=self.timeout,
-                headers={"Content-Type": "application/json"}
-            )
-            elapsed = (time.time() - start) * 1000
-            result.response_time_ms = round(elapsed, 2)
-            
-            if response.status_code not in (200, 202, 204):
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    f"Non-success HTTP status: {response.status_code}"
-                )
-                return result
-            
+        last_error = None
+        for attempt in range(self.max_retries):
             try:
-                resp_json = response.json()
-            except (json.JSONDecodeError, Exception):
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    "Response is not valid JSON (body is not JSON)"
+                start = time.time()
+                response = httpx.post(
+                    self.endpoint_url,
+                    json=payload,
+                    timeout=self.timeout,
+                    headers={"Content-Type": "application/json"}
                 )
-                result.jsonrpc_compliant = False
-                return result
-            
-            # Check JSON-RPC 2.0 required fields
-            if "jsonrpc" not in resp_json:
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    "Missing 'jsonrpc' field in response"
-                )
-            elif resp_json["jsonrpc"] != "2.0":
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    f"Expected jsonrpc='2.0', got '{resp_json['jsonrpc']}'"
-                )
-            
-            if "id" not in resp_json:
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    "Missing 'id' field in response"
-                )
-            
-            if "result" not in resp_json and "error" not in resp_json:
-                result.add_drift(
-                    "jsonrpc-conformance",
-                    "error",
-                    "Response must contain either 'result' or 'error'"
-                )
-            
-            result.jsonrpc_compliant = not any(
-                d.severity == "error" and d.drift_type == "jsonrpc-conformance"
-                for d in result.drift
+                response.raise_for_status()
+                elapsed = (time.time() - start) * 1000
+                result.response_time_ms = round(elapsed, 2)
+                result.attempts = attempt + 1
+                break
+            except (httpx.HTTPError, Exception) as e:
+                last_error = e
+                if _should_retry(e) and attempt < self.max_retries - 1:
+                    delay = 2 ** attempt
+                    logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. Retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    result.error = f"Failed to probe endpoint: {e}"
+                    result.add_drift("probe-error", "error", result.error)
+                    result.attempts = attempt + 1
+                    return result
+        
+        if last_error and result.error:
+            result.attempts = self.max_retries
+            return result
+        
+        if response.status_code not in (200, 202, 204):
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                f"Non-success HTTP status: {response.status_code}"
             )
-            
-        except httpx.TimeoutException:
-            result.error = "Endpoint probe timed out"
-            result.add_drift("endpoint-timeout", "error", result.error)
-        except httpx.HTTPError as e:
-            result.error = f"HTTP error: {e}"
-            result.add_drift("endpoint-error", "error", result.error)
+            return result
+        
+        try:
+            resp_json = response.json()
+        except (json.JSONDecodeError, Exception):
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                "Response is not valid JSON (body is not JSON)"
+            )
+            result.jsonrpc_compliant = False
+            return result
+        
+        # Check JSON-RPC 2.0 required fields
+        if "jsonrpc" not in resp_json:
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                "Missing 'jsonrpc' field in response"
+            )
+        elif resp_json["jsonrpc"] != "2.0":
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                f"Expected jsonrpc='2.0', got '{resp_json['jsonrpc']}'"
+            )
+        
+        if "id" not in resp_json:
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                "Missing 'id' field in response"
+            )
+        
+        if "result" not in resp_json and "error" not in resp_json:
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                "Response must contain either 'result' or 'error'"
+            )
+        
+        # Set jsonrpc_compliant based on conformance checks
+        if any(d.drift_type == "jsonrpc-conformance" and d.severity == "error" for d in result.drift):
+            result.jsonrpc_compliant = False
+        else:
+            result.jsonrpc_compliant = True
         
         return result
