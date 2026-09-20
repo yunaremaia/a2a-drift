@@ -227,7 +227,13 @@ class EndpointProber:
                 "error",
                 "Missing 'id' field in response"
             )
-        
+        elif resp_json["id"] != payload["id"]:
+            result.add_drift(
+                "jsonrpc-conformance",
+                "error",
+                f"Response 'id' mismatch: expected {payload['id']}, got {resp_json['id']}"
+            )
+
         if "result" not in resp_json and "error" not in resp_json:
             result.add_drift(
                 "jsonrpc-conformance",

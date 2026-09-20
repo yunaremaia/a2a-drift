@@ -156,6 +156,23 @@ class TestEndpointProber:
         result = self.prober.probe("message/send", {})
         assert result.jsonrpc_compliant is False
 
+    @patch("a2a_drift.httpx.post")
+    def test_mismatch_response_id(self, mock_post):
+        """Response with mismatched JSON-RPC id should be non-compliant."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "result": {"task": "abc-123"},
+            "id": 999
+        }
+        mock_post.return_value = mock_response
+        
+        result = self.prober.probe("message/send", {"message": {}})
+        assert result.jsonrpc_compliant is False
+        messages = [d.message for d in result.drift]
+        assert "Response 'id' mismatch: expected 1, got 999" in messages
+
 
 class TestValidationResult:
     def test_add_drift(self):
