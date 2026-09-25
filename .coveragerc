@@ -1,0 +1,6 @@
+[run]
+source = a2a_drift
+omit = 
+    */__pycache__/*
+    */egg-info/*
+    tests/*
