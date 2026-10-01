@@ -65,12 +65,16 @@ python -m pytest -q
 python -m pytest -q --cov=a2a_drift --cov-report=term-missing
 ```
 
-Tests currently live in `test_a2a_drift.py`, `test_retry.py`, `test_cli.py`, and
-`test_jsonrpc_conformance.py`. To narrow a run:
+Tests live in `tests/`; shared fixtures are in `tests/conftest.py`. To narrow a
+run:
 
 ```sh
-python -m pytest -q test_retry.py
+python -m pytest -q tests/test_retry.py
+python -m pytest -q -m unit
 ```
+
+Mark isolated unit tests `unit`. Reserve `slow` for tests that genuinely make real
+network calls; none exist yet. Mixed test modules may remain unmarked.
 
 The existing tests mock HTTP requests; you do not need a live agent, credentials,
 or a public endpoint. Follow this pattern for new tests, and mock backoff sleeps

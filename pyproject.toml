@@ -19,3 +19,11 @@ a2a-drift = "a2a_drift.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["a2a_drift*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "unit: isolated unit tests",
+    "slow: tests that make real network calls",
+]

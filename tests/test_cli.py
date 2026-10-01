@@ -6,18 +6,9 @@ import json
 import sys
 from unittest.mock import MagicMock, patch
 
-import pytest  # noqa: F401 - pytest.raises used by the argparse-exit tests
+import pytest
 
 from a2a_drift import cli
-
-VALID_CARD = {
-    "name": "Test Agent",
-    "description": "A test agent",
-    "url": "https://example.com/a2a",
-    "version": "1.0.0",
-    "protocolVersion": "1.0",
-    "capabilities": {"streaming": True},
-}
 
 LEGACY_CARD = {
     "name": "Legacy Agent",
@@ -97,8 +88,8 @@ class TestSarifOutput:
             assert uri == "https://example.com/card.json"
 
     @patch("a2a_drift.httpx.get")
-    def test_sarif_empty_results_when_compliant(self, mock_get):
-        mock_get.return_value = card_response(VALID_CARD)
+    def test_sarif_empty_results_when_compliant(self, mock_get, valid_agent_card):
+        mock_get.return_value = card_response(valid_agent_card)
 
         code, out, _err = run_cli(
             ["check", "https://example.com/card.json", "--format", "sarif"]
@@ -141,8 +132,10 @@ class TestBatchIsolation:
     """One broken agent card must not discard the rest of the batch."""
 
     @patch("a2a_drift.httpx.get")
-    def test_non_object_card_does_not_abort_batch(self, mock_get, tmp_path):
-        good = card_response(VALID_CARD)
+    def test_non_object_card_does_not_abort_batch(
+        self, mock_get, tmp_path, valid_agent_card
+    ):
+        good = card_response(valid_agent_card)
         bad = card_response([1, 2, 3])
         mock_get.side_effect = [good, bad, good]
 
@@ -165,8 +158,13 @@ class TestBatchIsolation:
         assert code == 1
 
     @patch("a2a_drift.httpx.get")
-    def test_text_batch_reports_every_entry(self, mock_get, tmp_path):
-        mock_get.side_effect = [card_response([1, 2, 3]), card_response(VALID_CARD)]
+    def test_text_batch_reports_every_entry(
+        self, mock_get, tmp_path, valid_agent_card
+    ):
+        mock_get.side_effect = [
+            card_response([1, 2, 3]),
+            card_response(valid_agent_card),
+        ]
 
         urls = tmp_path / "agents.txt"
         urls.write_text(
@@ -247,8 +245,8 @@ class TestSpecVersionFlag:
         assert code == 0
 
     @patch("a2a_drift.httpx.get")
-    def test_current_card_drifts_when_targeting_v03(self, mock_get):
-        mock_get.return_value = card_response(VALID_CARD)
+    def test_current_card_drifts_when_targeting_v03(self, mock_get, valid_agent_card):
+        mock_get.return_value = card_response(valid_agent_card)
 
         code, out, _err = run_cli(
             [
@@ -266,8 +264,8 @@ class TestSpecVersionFlag:
         assert report["drift"][0]["severity"] == "warning"
 
     @patch("a2a_drift.httpx.get")
-    def test_default_target_is_current_spec(self, mock_get):
-        mock_get.return_value = card_response(VALID_CARD)
+    def test_default_target_is_current_spec(self, mock_get, valid_agent_card):
+        mock_get.return_value = card_response(valid_agent_card)
 
         _, out, _err = run_cli(
             ["check", "https://example.com/card.json", "--format", "json"]
@@ -297,8 +295,8 @@ class TestDenyInternalFlag:
         assert mock_get.call_count == 0
 
     @patch("a2a_drift.httpx.get")
-    def test_internal_url_allowed_when_flag_is_absent(self, mock_get):
-        mock_get.return_value = card_response(VALID_CARD)
+    def test_internal_url_allowed_when_flag_is_absent(self, mock_get, valid_agent_card):
+        mock_get.return_value = card_response(valid_agent_card)
 
         code, out, _err = run_cli(
             ["check", "http://127.0.0.1:9999/agent-card.json", "--format", "json"]

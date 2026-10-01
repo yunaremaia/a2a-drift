@@ -3,15 +3,18 @@
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 
 from a2a_drift import AgentCardChecker, EndpointProber
+
+pytestmark = pytest.mark.unit
 
 
 class TestAgentCardCheckerRetry:
     """Tests for retry with exponential backoff on transient failures."""
 
     @patch("a2a_drift.httpx.get")
-    def test_retry_on_500_error_then_succeed(self, mock_get):
+    def test_retry_on_500_error_then_succeed(self, mock_get, valid_agent_card):
         """Server returns 500 first, then 200 — should succeed after retry."""
         mock_response_fail = MagicMock()
         mock_response_fail.status_code = 500
@@ -22,14 +25,7 @@ class TestAgentCardCheckerRetry:
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
-        mock_response_ok.json.return_value = {
-            "name": "Test Agent",
-            "description": "A test agent",
-            "url": "https://example.com/a2a",
-            "version": "1.0.0",
-            "protocolVersion": "1.0",
-            "capabilities": {"streaming": True},
-        }
+        mock_response_ok.json.return_value = valid_agent_card
         
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
         
@@ -42,19 +38,12 @@ class TestAgentCardCheckerRetry:
         assert mock_get.call_count == 2
 
     @patch("a2a_drift.httpx.get")
-    def test_retry_on_timeout_then_succeed(self, mock_get):
+    def test_retry_on_timeout_then_succeed(self, mock_get, valid_agent_card):
         """Timeout first, then success — should succeed after retry."""
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
-        mock_response_ok.json.return_value = {
-            "name": "Test Agent",
-            "description": "A test agent",
-            "url": "https://example.com/a2a",
-            "version": "1.0.0",
-            "protocolVersion": "1.0",
-            "capabilities": {"streaming": True},
-        }
+        mock_response_ok.json.return_value = valid_agent_card
         
         mock_get.side_effect = [httpx.TimeoutException("Timed out"), mock_response_ok]
         
@@ -115,7 +104,7 @@ class TestAgentCardCheckerRetry:
         assert mock_get.call_count == 5
 
     @patch("a2a_drift.httpx.get")
-    def test_retry_on_502_bad_gateway(self, mock_get):
+    def test_retry_on_502_bad_gateway(self, mock_get, valid_agent_card):
         """502 Bad Gateway should be retried."""
         mock_response_fail = MagicMock()
         mock_response_fail.status_code = 502
@@ -126,14 +115,7 @@ class TestAgentCardCheckerRetry:
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
-        mock_response_ok.json.return_value = {
-            "name": "Test Agent",
-            "description": "A test agent",
-            "url": "https://example.com/a2a",
-            "version": "1.0.0",
-            "protocolVersion": "1.0",
-            "capabilities": {"streaming": True},
-        }
+        mock_response_ok.json.return_value = valid_agent_card
         
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
         
@@ -144,7 +126,7 @@ class TestAgentCardCheckerRetry:
         assert result.attempts == 2
 
     @patch("a2a_drift.httpx.get")
-    def test_retry_on_503_service_unavailable(self, mock_get):
+    def test_retry_on_503_service_unavailable(self, mock_get, valid_agent_card):
         """503 Service Unavailable should be retried."""
         mock_response_fail = MagicMock()
         mock_response_fail.status_code = 503
@@ -155,14 +137,7 @@ class TestAgentCardCheckerRetry:
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
-        mock_response_ok.json.return_value = {
-            "name": "Test Agent",
-            "description": "A test agent",
-            "url": "https://example.com/a2a",
-            "version": "1.0.0",
-            "protocolVersion": "1.0",
-            "capabilities": {"streaming": True},
-        }
+        mock_response_ok.json.return_value = valid_agent_card
         
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
         

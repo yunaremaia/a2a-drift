@@ -30,10 +30,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest
+          python -m pip install pytest pytest-cov
 
-      - name: Run tests
-        run: python -m pytest -q
+      # Coverage is reported, not enforced: there is deliberately no --cov-fail-under.
+      - name: Run tests with coverage
+        run: python -m pytest -q --cov=a2a_drift --cov-report=term-missing
 
   lint:
     name: ruff

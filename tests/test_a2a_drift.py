@@ -7,6 +7,8 @@ import pytest
 
 from a2a_drift import AgentCardChecker, EndpointProber, ValidationResult
 
+pytestmark = pytest.mark.unit
+
 
 class TestAgentCardChecker:
     def setup_method(self):

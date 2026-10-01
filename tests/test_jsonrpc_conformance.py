@@ -7,8 +7,11 @@ worse than one that stays silent, so these tests pin the negative cases.
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 
 from a2a_drift import EndpointProber
+
+pytestmark = pytest.mark.unit
 
 
 def json_response(payload, status_code=200):
