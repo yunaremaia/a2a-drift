@@ -2,12 +2,13 @@
 
 __version__ = "0.1.0"
 
-from typing import Optional
-from dataclasses import dataclass, field
-import httpx
 import json
-import time
 import logging
+import time
+from dataclasses import dataclass, field
+from typing import Optional
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,13 @@ class ValidationResult:
     error: Optional[str] = None
     attempts: int = 0
 
-    def add_drift(self, drift_type: str, severity: str, message: str, path: Optional[str] = None):
+    def add_drift(
+        self,
+        drift_type: str,
+        severity: str,
+        message: str,
+        path: Optional[str] = None,
+    ):
         self.drift.append(DriftFinding(drift_type, severity, message, path))
         if severity == "error":
             self.is_compliant = False
@@ -66,7 +73,9 @@ class AgentCardChecker:
         last_error = None
         for attempt in range(self.max_retries):
             try:
-                response = httpx.get(self.url, timeout=self.timeout, follow_redirects=True)
+                response = httpx.get(
+                    self.url, timeout=self.timeout, follow_redirects=True
+                )
                 response.raise_for_status()
                 result.attempts = attempt + 1
                 break
@@ -74,7 +83,10 @@ class AgentCardChecker:
                 last_error = e
                 if _should_retry(e) and attempt < self.max_retries - 1:
                     delay = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
-                    logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. Retrying in {delay}s...")
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. "
+                        f"Retrying in {delay}s..."
+                    )
                     time.sleep(delay)
                     continue
                 else:
@@ -175,7 +187,10 @@ class EndpointProber:
                 last_error = e
                 if _should_retry(e) and attempt < self.max_retries - 1:
                     delay = 2 ** attempt
-                    logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. Retrying in {delay}s...")
+                    logger.warning(
+                        f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. "
+                        f"Retrying in {delay}s..."
+                    )
                     time.sleep(delay)
                     continue
                 else:
@@ -231,7 +246,8 @@ class EndpointProber:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                f"Response 'id' mismatch: expected {payload['id']}, got {resp_json['id']}"
+                f"Response 'id' mismatch: expected {payload['id']}, "
+                f"got {resp_json['id']}"
             )
 
         if "result" not in resp_json and "error" not in resp_json:
@@ -242,7 +258,10 @@ class EndpointProber:
             )
         
         # Set jsonrpc_compliant based on conformance checks
-        if any(d.drift_type == "jsonrpc-conformance" and d.severity == "error" for d in result.drift):
+        if any(
+            d.drift_type == "jsonrpc-conformance" and d.severity == "error"
+            for d in result.drift
+        ):
             result.jsonrpc_compliant = False
         else:
             result.jsonrpc_compliant = True

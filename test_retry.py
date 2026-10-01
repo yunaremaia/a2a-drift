@@ -1,10 +1,10 @@
 """Tests for a2a-drift retry with exponential backoff (issue #1)."""
 
-import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import MagicMock, patch
+
 import httpx
 
-from a2a_drift import AgentCardChecker, EndpointProber, ValidationResult
+from a2a_drift import AgentCardChecker, EndpointProber
 
 
 class TestAgentCardCheckerRetry:
@@ -71,7 +71,9 @@ class TestAgentCardCheckerRetry:
         """All retries fail — should return error after max_retries attempts."""
         mock_get.side_effect = httpx.TimeoutException("Timed out")
         
-        checker = AgentCardChecker("https://example.com/.well-known/agent-card.json", max_retries=3)
+        checker = AgentCardChecker(
+            "https://example.com/.well-known/agent-card.json", max_retries=3
+        )
         result = checker.validate()
         
         assert result.is_compliant is False
@@ -104,7 +106,9 @@ class TestAgentCardCheckerRetry:
         """Custom max_retries should override default."""
         mock_get.side_effect = httpx.TimeoutException("Timed out")
         
-        checker = AgentCardChecker("https://example.com/.well-known/agent-card.json", max_retries=5)
+        checker = AgentCardChecker(
+            "https://example.com/.well-known/agent-card.json", max_retries=5
+        )
         result = checker.validate()
         
         assert result.attempts == 5

@@ -1,10 +1,9 @@
 """Tests for a2a-drift."""
 
-import pytest
-from unittest.mock import patch, MagicMock
 import json
+from unittest.mock import MagicMock, patch
 
-from a2a_drift import AgentCardChecker, EndpointProber, ValidationResult, DriftFinding
+from a2a_drift import AgentCardChecker, EndpointProber, ValidationResult
 
 
 class TestAgentCardChecker:

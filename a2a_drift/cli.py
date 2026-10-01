@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+
 from a2a_drift import AgentCardChecker, EndpointProber
 
 
@@ -12,36 +13,58 @@ def main():
         description="Detect A2A protocol compliance drift"
     )
     subparsers = parser.add_subparsers(dest="command")
-    
+
+    def add_network_args(subparser):
+        """Add the retry and timeout options shared by every subcommand."""
+        subparser.add_argument(
+            "--retries",
+            type=int,
+            default=3,
+            help="Max retries on transient failures (default: 3)",
+        )
+        subparser.add_argument(
+            "--timeout",
+            type=float,
+            default=10.0,
+            help="HTTP timeout in seconds (default: 10.0)",
+        )
+
     # check command
     check_parser = subparsers.add_parser("check", help="Validate an agent card")
     check_parser.add_argument("url", help="URL of the agent card")
-    check_parser.add_argument("--spec-version", default="1.0", help="Target spec version")
-    check_parser.add_argument("--format", choices=["text", "json", "sarif"], default="text")
+    check_parser.add_argument(
+        "--spec-version", default="1.0", help="Target spec version"
+    )
+    check_parser.add_argument(
+        "--format", choices=["text", "json", "sarif"], default="text"
+    )
     check_parser.add_argument("--output", "-o", help="Output file")
-    check_parser.add_argument("--retries", type=int, default=3, help="Max retries on transient failures (default: 3)")
-    check_parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout in seconds (default: 10.0)")
-    
+    add_network_args(check_parser)
+
     # probe command
     probe_parser = subparsers.add_parser("probe", help="Probe a live endpoint")
     probe_parser.add_argument("url", help="Endpoint URL")
-    probe_parser.add_argument("--method", default="message/send", help="JSON-RPC method")
+    probe_parser.add_argument(
+        "--method", default="message/send", help="JSON-RPC method"
+    )
     probe_parser.add_argument("--params", default="{}", help="JSON params")
     probe_parser.add_argument("--format", choices=["text", "json"], default="text")
-    probe_parser.add_argument("--retries", type=int, default=3, help="Max retries on transient failures (default: 3)")
-    probe_parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout in seconds (default: 10.0)")
-    
+    add_network_args(probe_parser)
+
     # batch command
-    batch_parser = subparsers.add_parser("batch", help="Batch check multiple agents")
+    batch_parser = subparsers.add_parser(
+        "batch", help="Batch check multiple agents"
+    )
     batch_parser.add_argument("--file", required=True, help="File with agent card URLs")
     batch_parser.add_argument("--format", choices=["text", "json"], default="text")
-    batch_parser.add_argument("--retries", type=int, default=3, help="Max retries on transient failures (default: 3)")
-    batch_parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout in seconds (default: 10.0)")
-    
+    add_network_args(batch_parser)
+
     args = parser.parse_args()
     
     if args.command == "check":
-        checker = AgentCardChecker(args.url, timeout=args.timeout, max_retries=args.retries)
+        checker = AgentCardChecker(
+            args.url, timeout=args.timeout, max_retries=args.retries
+        )
         result = checker.validate()
         
         if args.format == "json":
@@ -75,7 +98,9 @@ def main():
             if result.drift:
                 lines.append(f"  Drift findings ({len(result.drift)}):")
                 for d in result.drift:
-                    lines.append(f"    [{d.severity.upper()}] {d.drift_type}: {d.message}")
+                    lines.append(
+                        f"    [{d.severity.upper()}] {d.drift_type}: {d.message}"
+                    )
             out_str = "\n".join(lines)
         
         if args.output:
@@ -87,8 +112,12 @@ def main():
         sys.exit(0 if result.is_compliant else 1)
     
     elif args.command == "probe":
-        prober = EndpointProber(args.url, timeout=args.timeout, max_retries=args.retries)
-        result = prober.probe(args.method, json.loads(args.params) if args.params else {})
+        prober = EndpointProber(
+            args.url, timeout=args.timeout, max_retries=args.retries
+        )
+        result = prober.probe(
+            args.method, json.loads(args.params) if args.params else {}
+        )
         
         if args.format == "json":
             output = {
@@ -120,7 +149,9 @@ def main():
             if result.drift:
                 lines.append(f"  Drift findings ({len(result.drift)}):")
                 for d in result.drift:
-                    lines.append(f"    [{d.severity.upper()}] {d.drift_type}: {d.message}")
+                    lines.append(
+                        f"    [{d.severity.upper()}] {d.drift_type}: {d.message}"
+                    )
             out_str = "\n".join(lines)
         
         print(out_str)
@@ -132,7 +163,9 @@ def main():
         
         results = []
         for url in urls:
-            checker = AgentCardChecker(url, timeout=args.timeout, max_retries=args.retries)
+            checker = AgentCardChecker(
+                url, timeout=args.timeout, max_retries=args.retries
+            )
             result = checker.validate()
             results.append({
                 "url": result.url,

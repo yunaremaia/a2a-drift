@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-a2a-drift = "cli:main"
+a2a-drift = "a2a_drift.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["a2a_drift*"]
