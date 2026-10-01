@@ -3,6 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from a2a_drift import AgentCardChecker, EndpointProber, ValidationResult
 
 
@@ -72,6 +74,82 @@ class TestAgentCardChecker:
         assert len(spec_drift) == 1
         assert spec_drift[0].severity == "warning"
         assert "0.3" in spec_drift[0].message
+
+    @staticmethod
+    def _card_with_protocol_version(proto_version):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "name": "Versioned Agent",
+            "description": "Spec version under test",
+            "url": "https://example.com/a2a",
+            "version": "1.0.0",
+            "protocolVersion": proto_version,
+            "capabilities": {},
+            "skills": []
+        }
+        return mock_response
+
+    def _validate_protocol_version(self, proto_version):
+        with patch("a2a_drift.httpx.get") as mock_get:
+            mock_get.return_value = self._card_with_protocol_version(proto_version)
+            return self.checker.validate()
+
+    @pytest.mark.parametrize("proto_version", ["0.1.0", "0.10.0", "0.2.9"])
+    def test_protocol_version_matched_by_substring_is_rejected(self, proto_version):
+        """A version whose digits merely contain a known spec is not that spec.
+
+        protocolVersion "0.1.0" contains the substring "1.0", so the previous
+        substring test reported it as spec 1.0 with zero drift. It must instead
+        be reported as an undetermined spec version.
+        """
+        result = self._validate_protocol_version(proto_version)
+
+        assert result.spec_version is None
+        spec_drift = [d for d in result.drift if d.drift_type == "spec-version"]
+        assert len(spec_drift) == 1
+        assert "Could not determine" in spec_drift[0].message
+        assert proto_version in spec_drift[0].message
+
+    @pytest.mark.parametrize(
+        "proto_version,expected",
+        [("1.0", "1.0"), ("0.3", "0.3")],
+    )
+    def test_exact_spec_versions_still_recognized(self, proto_version, expected):
+        """The two supported spec versions are still detected without drift noise."""
+        result = self._validate_protocol_version(proto_version)
+
+        assert result.spec_version == expected
+        if expected == "0.3":
+            spec_drift = [d for d in result.drift if d.drift_type == "spec-version"]
+            assert len(spec_drift) == 1
+            assert spec_drift[0].severity == "warning"
+        else:
+            assert [d for d in result.drift if d.drift_type == "spec-version"] == []
+
+    @pytest.mark.parametrize(
+        "proto_version,expected",
+        [("1.0.0", "1.0"), ("0.3.1", "0.3"), ("1.0-rc.1", "1.0")],
+    )
+    def test_patch_and_prerelease_suffixes_resolve_to_major_minor(
+        self, proto_version, expected
+    ):
+        """A patch or pre-release suffix still resolves to its major.minor spec."""
+        result = self._validate_protocol_version(proto_version)
+
+        assert result.spec_version == expected
+
+    @pytest.mark.parametrize("proto_version", ["10.0", "1.1.0", "2.0", "1", "", "v1.0"])
+    def test_unknown_protocol_versions_are_reported_as_undetermined(
+        self, proto_version
+    ):
+        """Versions outside the known set are reported, never silently accepted."""
+        result = self._validate_protocol_version(proto_version)
+
+        assert result.spec_version is None
+        spec_drift = [d for d in result.drift if d.drift_type == "spec-version"]
+        assert len(spec_drift) == 1
+        assert "Could not determine" in spec_drift[0].message
 
     @patch("a2a_drift.httpx.get")
     def test_fetch_error(self, mock_get):

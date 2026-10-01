@@ -44,6 +44,26 @@ class ValidationResult:
             self.is_compliant = False
 
 
+def _normalize_spec_version(raw: object) -> Optional[str]:
+    """Return the A2A spec version a raw ``protocolVersion`` value declares.
+
+    Matching is on the leading ``major.minor`` component, never a substring:
+    ``"0.1.0"`` must not be read as ``"1.0"`` just because the digits appear in
+    order. A value whose leading ``major.minor`` is not one of the known spec
+    versions returns ``None`` so the caller reports it as undetermined.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    # Drop any pre-release/build suffix (e.g. "1.0-rc.1") before splitting.
+    text = text.split("-", 1)[0].split("+", 1)[0]
+    parts = text.split(".")
+    if len(parts) < 2:
+        return None
+    candidate = f"{parts[0]}.{parts[1]}"
+    return candidate if candidate in AgentCardChecker.SPEC_VERSIONS else None
+
+
 def _should_retry(exc: Exception) -> bool:
     """Determine if an HTTP exception is retryable."""
     if isinstance(exc, httpx.TimeoutException):
@@ -116,16 +136,18 @@ class AgentCardChecker:
                     path=f"$.{field_name}"
                 )
         
-        # Check spec version
+        # Check spec version. Match the leading major.minor component only:
+        # a substring test would read protocolVersion "0.1.0" as spec 1.0.
         proto_version = card.get("protocolVersion", "")
-        if proto_version == "1.0" or "1.0" in str(proto_version):
-            result.spec_version = "1.0"
-        elif proto_version == "0.3" or "0.3" in str(proto_version):
-            result.spec_version = "0.3"
+        detected = _normalize_spec_version(proto_version)
+        if detected == self.CURRENT_SPEC:
+            result.spec_version = detected
+        elif detected is not None:
+            result.spec_version = detected
             result.add_drift(
                 "spec-version",
                 "warning",
-                f"Agent uses spec v0.3; v{self.CURRENT_SPEC} is current"
+                f"Agent uses spec v{detected}; v{self.CURRENT_SPEC} is current"
             )
         else:
             result.add_drift(
