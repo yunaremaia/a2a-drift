@@ -12,7 +12,9 @@ pytestmark = pytest.mark.unit
 
 class TestAgentCardChecker:
     def setup_method(self):
-        self.checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
+        self.checker = AgentCardChecker(
+            "https://example.com/.well-known/agent-card.json"
+        )
 
     @patch("a2a_drift.httpx.get")
     def test_valid_agent_card_v1(self, mock_get):
@@ -28,7 +30,7 @@ class TestAgentCardChecker:
             "capabilities": {"streaming": True},
             "defaultInputModes": ["text"],
             "defaultOutputModes": ["text"],
-            "skills": []
+            "skills": [],
         }
         mock_get.return_value = mock_response
 
@@ -44,7 +46,7 @@ class TestAgentCardChecker:
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "name": "Test Agent",
-            "description": "Missing required fields"
+            "description": "Missing required fields",
         }
         mock_get.return_value = mock_response
 
@@ -66,7 +68,7 @@ class TestAgentCardChecker:
             "version": "0.3.0",
             "protocolVersion": "0.3",
             "capabilities": {},
-            "skills": []
+            "skills": [],
         }
         mock_get.return_value = mock_response
 
@@ -88,7 +90,7 @@ class TestAgentCardChecker:
             "version": "1.0.0",
             "protocolVersion": proto_version,
             "capabilities": {},
-            "skills": []
+            "skills": [],
         }
         return mock_response
 
@@ -188,7 +190,7 @@ class TestEndpointProber:
         mock_response.json.return_value = {
             "jsonrpc": "2.0",
             "result": {"task": "abc-123"},
-            "id": 1
+            "id": 1,
         }
         mock_post.return_value = mock_response
 
@@ -215,7 +217,7 @@ class TestEndpointProber:
         mock_response.json.return_value = {
             "jsonrpc": "2.0",
             "error": {"code": -32600, "message": "Invalid Request"},
-            "id": 1
+            "id": 1,
         }
         mock_post.return_value = mock_response
 
@@ -243,10 +245,10 @@ class TestEndpointProber:
         mock_response.json.return_value = {
             "jsonrpc": "2.0",
             "result": {"task": "abc-123"},
-            "id": 999
+            "id": 999,
         }
         mock_post.return_value = mock_response
-        
+
         result = self.prober.probe("message/send", {"message": {}})
         assert result.jsonrpc_compliant is False
         messages = [d.message for d in result.drift]

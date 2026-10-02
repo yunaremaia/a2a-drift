@@ -43,7 +43,7 @@ class ValidationResult:
         severity: str,
         message: str,
         path: Optional[str] = None,
-    ):
+    ) -> None:
         self.drift.append(DriftFinding(drift_type, severity, message, path))
         if severity == "error":
             self.is_compliant = False
@@ -75,9 +75,7 @@ def _should_retry(exc: Exception) -> bool:
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code >= 500
-    if isinstance(exc, (httpx.ConnectError, httpx.RemoteProtocolError)):
-        return True
-    return False
+    return isinstance(exc, (httpx.ConnectError, httpx.RemoteProtocolError))
 
 
 def _is_internal_ip(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -> bool:
@@ -173,7 +171,7 @@ class AgentCardChecker:
             except (httpx.HTTPError, Exception) as e:
                 last_error = e
                 if _should_retry(e) and attempt < self.max_retries - 1:
-                    delay = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    delay = 2**attempt  # Exponential backoff: 1s, 2s, 4s
                     logger.warning(
                         f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. "
                         f"Retrying in {delay}s..."
@@ -221,7 +219,7 @@ class AgentCardChecker:
                     "schema-violation",
                     "error",
                     f"Missing required field: {field_name}",
-                    path=f"$.{field_name}"
+                    path=f"$.{field_name}",
                 )
 
         # Check spec version. Match the leading major.minor component only:
@@ -236,28 +234,28 @@ class AgentCardChecker:
             result.add_drift(
                 "spec-version",
                 "warning",
-                f"Agent uses spec v{detected}; v{target} is the expected version"
+                f"Agent uses spec v{detected}; v{target} is the expected version",
             )
         else:
             result.add_drift(
                 "spec-version",
                 "warning",
-                f"Could not determine A2A spec version (got: {proto_version})"
+                f"Could not determine A2A spec version (got: {proto_version})",
             )
-        
+
         # Check capabilities
         capabilities = card.get("capabilities", {})
         if not capabilities:
             result.add_drift(
                 "capability-advertised-but-unsupported",
                 "warning",
-                "No capabilities declared in agent card"
+                "No capabilities declared in agent card",
             )
-        
+
         # If no errors, mark as compliant
         if not any(d.severity == "error" for d in result.drift):
             result.is_compliant = True
-        
+
         return result
 
 
@@ -280,20 +278,13 @@ class EndpointProber:
     def probe(self, method: str, params: Optional[dict] = None) -> ValidationResult:
         result = ValidationResult(url=self.endpoint_url)
 
-        blocked = validate_url(
-            self.endpoint_url, allow_internal=self.allow_internal
-        )
+        blocked = validate_url(self.endpoint_url, allow_internal=self.allow_internal)
         if blocked:
             result.error = blocked
             result.add_drift("security-transport", "error", blocked)
             return result
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {},
-            "id": 1
-        }
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": 1}
 
         last_error = None
         response = None
@@ -304,7 +295,7 @@ class EndpointProber:
                     self.endpoint_url,
                     json=payload,
                     timeout=self.timeout,
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
                 elapsed = (time.time() - start) * 1000
@@ -314,7 +305,7 @@ class EndpointProber:
             except (httpx.HTTPError, Exception) as e:
                 last_error = e
                 if _should_retry(e) and attempt < self.max_retries - 1:
-                    delay = 2 ** attempt
+                    delay = 2**attempt
                     logger.warning(
                         f"Attempt {attempt + 1}/{self.max_retries} failed: {e}. "
                         f"Retrying in {delay}s..."
@@ -336,12 +327,12 @@ class EndpointProber:
                 result.add_drift("probe-error", "error", result.error)
             result.attempts = max(self.max_retries, result.attempts)
             return result
-        
+
         if response.status_code not in (200, 202, 204):
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                f"Non-success HTTP status: {response.status_code}"
+                f"Non-success HTTP status: {response.status_code}",
             )
             # A response was obtained and rejected: conformance is decided.
             result.jsonrpc_compliant = False
@@ -353,7 +344,7 @@ class EndpointProber:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                "Response is not valid JSON (body is not JSON)"
+                "Response is not valid JSON (body is not JSON)",
             )
             result.jsonrpc_compliant = False
             return result
@@ -363,7 +354,7 @@ class EndpointProber:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                f"Response must be a JSON object, got {type(resp_json).__name__}"
+                f"Response must be a JSON object, got {type(resp_json).__name__}",
             )
             result.jsonrpc_compliant = False
             return result
@@ -371,29 +362,25 @@ class EndpointProber:
         # Check JSON-RPC 2.0 required fields
         if "jsonrpc" not in resp_json:
             result.add_drift(
-                "jsonrpc-conformance",
-                "error",
-                "Missing 'jsonrpc' field in response"
+                "jsonrpc-conformance", "error", "Missing 'jsonrpc' field in response"
             )
         elif resp_json["jsonrpc"] != "2.0":
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                f"Expected jsonrpc='2.0', got '{resp_json['jsonrpc']}'"
+                f"Expected jsonrpc='2.0', got '{resp_json['jsonrpc']}'",
             )
 
         if "id" not in resp_json:
             result.add_drift(
-                "jsonrpc-conformance",
-                "error",
-                "Missing 'id' field in response"
+                "jsonrpc-conformance", "error", "Missing 'id' field in response"
             )
         elif resp_json["id"] != payload["id"]:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
                 f"Response 'id' mismatch: expected {payload['id']}, "
-                f"got {resp_json['id']}"
+                f"got {resp_json['id']}",
             )
 
         # Exactly one of result/error must be present (JSON-RPC 2.0 §5.1).
@@ -403,13 +390,13 @@ class EndpointProber:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                "Response must contain either 'result' or 'error'"
+                "Response must contain either 'result' or 'error'",
             )
         elif has_result and has_error:
             result.add_drift(
                 "jsonrpc-conformance",
                 "error",
-                "Response must not contain both 'result' and 'error'"
+                "Response must not contain both 'result' and 'error'",
             )
         elif has_error:
             error = resp_json["error"]
@@ -417,7 +404,7 @@ class EndpointProber:
                 result.add_drift(
                     "jsonrpc-conformance",
                     "error",
-                    f"error must be an object, got {type(error).__name__}"
+                    f"error must be an object, got {type(error).__name__}",
                 )
             else:
                 code = error.get("code")
@@ -425,19 +412,19 @@ class EndpointProber:
                     result.add_drift(
                         "jsonrpc-conformance",
                         "error",
-                        "error.code is required and must be an integer"
+                        "error.code is required and must be an integer",
                     )
                 elif isinstance(code, bool) or not isinstance(code, int):
                     result.add_drift(
                         "jsonrpc-conformance",
                         "error",
-                        f"error.code must be an integer, got {code!r}"
+                        f"error.code must be an integer, got {code!r}",
                     )
                 if not isinstance(error.get("message"), str):
                     result.add_drift(
                         "jsonrpc-conformance",
                         "error",
-                        "error.message is required and must be a string"
+                        "error.message is required and must be a string",
                     )
 
         # Set jsonrpc_compliant based on conformance checks

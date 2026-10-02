@@ -1,6 +1,6 @@
 """Entry point for ``python -m a2a_drift``."""
 
-from a2a_drift.__init__ import (
+from a2a_drift import (
     AgentCardChecker,
     DriftFinding,
     EndpointProber,

@@ -55,5 +55,42 @@ jobs:
       - name: Install ruff
         run: python -m pip install ruff
 
+      # Reads [tool.ruff] from pyproject.toml. Do not re-pass --isolated with a
+      # hand-written --select here: that made this job a second, silent source
+      # of truth for which rules are enforced, and it silently disagreed with
+      # what contributors get from a bare `ruff check .`.
       - name: Run ruff
-        run: ruff check --isolated --select E,F,I .
+        run: ruff check --output-format=github .
+
+      # Formatting is a separate step from linting on purpose: `ruff check
+      # --fix` can resolve findings in a way the formatter would re-flag, so
+      # running them in that order keeps the two from fighting each other.
+      - name: Check formatting
+        run: ruff format --check .
+
+  typecheck:
+    name: mypy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install mypy
+        run: python -m pip install mypy
+
+      # The package is installed (not just type-checked in place) so that httpx
+      # resolves from site-packages and mypy checks real import resolution
+      # rather than guessing at a missing dependency.
+      - name: Install package
+        run: python -m pip install -e .
+
+      # `files` and the flags come from [tool.mypy]; the only thing passed here
+      # is the config path, so local `mypy` and CI run identical settings.
+      - name: Run mypy
+        run: mypy --config-file pyproject.toml

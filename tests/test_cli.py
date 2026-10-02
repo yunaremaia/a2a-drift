@@ -158,21 +158,15 @@ class TestBatchIsolation:
         assert code == 1
 
     @patch("a2a_drift.httpx.get")
-    def test_text_batch_reports_every_entry(
-        self, mock_get, tmp_path, valid_agent_card
-    ):
+    def test_text_batch_reports_every_entry(self, mock_get, tmp_path, valid_agent_card):
         mock_get.side_effect = [
             card_response([1, 2, 3]),
             card_response(valid_agent_card),
         ]
 
         urls = tmp_path / "agents.txt"
-        urls.write_text(
-            "https://example.com/bad.json\nhttps://example.com/good.json\n"
-        )
-        code, out, _err = run_cli(
-            ["batch", "--file", str(urls), "--retries", "1"]
-        )
+        urls.write_text("https://example.com/bad.json\nhttps://example.com/good.json\n")
+        code, out, _err = run_cli(["batch", "--file", str(urls), "--retries", "1"])
 
         assert "bad.json" in out
         assert "good.json" in out
@@ -182,9 +176,7 @@ class TestBatchIsolation:
         urls = tmp_path / "empty.txt"
         urls.write_text("\n  \n")
 
-        code, _out, err = run_cli(
-            ["batch", "--file", str(urls), "--format", "json"]
-        )
+        code, _out, err = run_cli(["batch", "--file", str(urls), "--format", "json"])
 
         assert code == 1
         assert "no agent card URLs" in err

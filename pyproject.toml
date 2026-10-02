@@ -20,6 +20,70 @@ a2a-drift = "a2a_drift.cli:main"
 [tool.setuptools.packages.find]
 include = ["a2a_drift*"]
 
+# Quality gates for issue #16.
+#
+# Rule selection is deliberate, not "enable everything and silence the noise".
+# The six families below each catch a class of real defect in this codebase:
+#   E, F  pycodestyle errors + pyflakes (undefined/unused names) — baseline.
+#   I     import sorting, so the import block stops depending on who edited it.
+#   B     bugbear: the mutable-default and shadowed-loop-var class of mistakes.
+#   UP    pyupgrade: modern syntax the declared >=3.9 floor already allows.
+#   SIM   flake8-simplify: collapsible branches and redundant nesting.
+# Anything that would be pure churn for a codebase this size stays off rather
+# than being enabled and then ignored file by file.
+[tool.ruff]
+# 3.9 is the floor declared in requires-python, and CI tests it. Pinning the
+# target here is what stops UP007/UP045 from rewriting `Optional[str]` into
+# `str | None`, which is a runtime TypeError on 3.9 (PEP 604 landed in 3.10).
+target-version = "py39"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# SIM117 wants nested `with` blocks combined into one. Doing that requires
+# parenthesised context managers, which are a 3.10+ syntax and this package
+# still supports 3.9, so the rule is unenforceable here rather than merely
+# noisy. Applies to the test suite only; library code is not exempt.
+"tests/**" = ["SIM117"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# Type gate for issue #16.
+#
+# The issue proposed `strict = false` and "a few errors for legacy code". That
+# is how a type gate dies: a job that is expected to fail gets ignored, then
+# deleted. Instead this enables the checks that are achievable on a
+# 700-line package that is already fully annotated — the three missing return
+# annotations it surfaced were fixed in the same change — while leaving
+# `disallow_any_explicit`/`strict` off, which would flag the deliberate
+# `Optional[bool]` tri-state on ValidationResult and the dynamic JSON parsing
+# that the whole tool is built on.
+[tool.mypy]
+# `python_version` is intentionally not pinned: mypy 2.x refuses anything
+# below 3.10, while this package supports 3.9. Pinning it to the lowest
+# version mypy accepts would mean the gate checks 3.10 semantics and calls
+# that 3.9 coverage, which is worse than checking the interpreter's own
+# version honestly. The 3.9 floor is enforced where it actually matters — by
+# the pytest matrix leg in CI.
+files = ["a2a_drift"]
+# Disallow untyped defs. Every function in the package is annotated, and the
+# gate is what keeps it that way as new code lands.
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# Catch the silent-failure modes: a redundant cast hides a type error, an
+# unused ignore means the type it silenced has changed.
+warn_redundant_casts = true
+warn_unused_ignores = true
+# No implicit Optional: `def f(x: int = None)` is an error, not a shrug.
+no_implicit_optional = true
+# 1 == True must be a deliberate, visible decision.
+strict_equality = true
+# Report the error only; the CI step is the gate, local runs are for humans.
+pretty = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"

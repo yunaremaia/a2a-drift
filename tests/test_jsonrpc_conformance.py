@@ -40,9 +40,7 @@ class TestErrorObjectStructure:
     def test_error_as_bare_string_is_not_compliant(self):
         result = probe({"jsonrpc": "2.0", "id": 1, "error": "boom"})
         assert result.jsonrpc_compliant is False
-        assert any(
-            "must be an object" in d.message for d in result.drift
-        )
+        assert any("must be an object" in d.message for d in result.drift)
 
     def test_error_missing_code_is_not_compliant(self):
         result = probe({"jsonrpc": "2.0", "id": 1, "error": {"message": "no code"}})
@@ -123,9 +121,9 @@ class TestComplianceIsAlwaysDecided:
                 "Server Error", request=MagicMock(), response=response
             )
             mock_post.return_value = response
-            result = EndpointProber(
-                "https://example.com/a2a", max_retries=1
-            ).probe("message/send")
+            result = EndpointProber("https://example.com/a2a", max_retries=1).probe(
+                "message/send"
+            )
 
         assert result.jsonrpc_compliant is None
         assert result.is_compliant is False
@@ -147,9 +145,9 @@ class TestComplianceIsAlwaysDecided:
     def test_fetch_failure_leaves_conformance_unknown(self):
         with patch("a2a_drift.httpx.post") as mock_post:
             mock_post.side_effect = httpx.ConnectError("refused")
-            result = EndpointProber(
-                "https://example.com/a2a", max_retries=1
-            ).probe("message/send")
+            result = EndpointProber("https://example.com/a2a", max_retries=1).probe(
+                "message/send"
+            )
 
         # No response was obtained, so conformance genuinely is unknown.
         assert result.jsonrpc_compliant is None

@@ -21,17 +21,17 @@ class TestAgentCardCheckerRetry:
         mock_response_fail.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Server Error", request=MagicMock(), response=mock_response_fail
         )
-        
+
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
         mock_response_ok.json.return_value = valid_agent_card
-        
+
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
-        
+
         checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
         result = checker.validate()
-        
+
         assert result.is_compliant is True
         assert result.attempts == 2
         assert result.error is None
@@ -44,12 +44,12 @@ class TestAgentCardCheckerRetry:
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
         mock_response_ok.json.return_value = valid_agent_card
-        
+
         mock_get.side_effect = [httpx.TimeoutException("Timed out"), mock_response_ok]
-        
+
         checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
         result = checker.validate()
-        
+
         assert result.is_compliant is True
         assert result.attempts == 2
         assert mock_get.call_count == 2
@@ -59,12 +59,12 @@ class TestAgentCardCheckerRetry:
     def test_retries_exhausted_returns_error(self, mock_sleep, mock_get):
         """All retries fail — should return error after max_retries attempts."""
         mock_get.side_effect = httpx.TimeoutException("Timed out")
-        
+
         checker = AgentCardChecker(
             "https://example.com/.well-known/agent-card.json", max_retries=3
         )
         result = checker.validate()
-        
+
         assert result.is_compliant is False
         assert result.attempts == 3
         assert "Failed to fetch agent card" in result.error
@@ -82,10 +82,10 @@ class TestAgentCardCheckerRetry:
             "Not Found", request=MagicMock(), response=mock_response
         )
         mock_get.return_value = mock_response
-        
+
         checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
         result = checker.validate()
-        
+
         assert result.is_compliant is False
         assert result.attempts == 1
         assert mock_get.call_count == 1  # No retries for 4xx
@@ -94,12 +94,12 @@ class TestAgentCardCheckerRetry:
     def test_custom_max_retries(self, mock_get):
         """Custom max_retries should override default."""
         mock_get.side_effect = httpx.TimeoutException("Timed out")
-        
+
         checker = AgentCardChecker(
             "https://example.com/.well-known/agent-card.json", max_retries=5
         )
         result = checker.validate()
-        
+
         assert result.attempts == 5
         assert mock_get.call_count == 5
 
@@ -111,17 +111,17 @@ class TestAgentCardCheckerRetry:
         mock_response_fail.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Bad Gateway", request=MagicMock(), response=mock_response_fail
         )
-        
+
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
         mock_response_ok.json.return_value = valid_agent_card
-        
+
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
-        
+
         checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
         result = checker.validate()
-        
+
         assert result.is_compliant is True
         assert result.attempts == 2
 
@@ -133,17 +133,17 @@ class TestAgentCardCheckerRetry:
         mock_response_fail.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Service Unavailable", request=MagicMock(), response=mock_response_fail
         )
-        
+
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
         mock_response_ok.json.return_value = valid_agent_card
-        
+
         mock_get.side_effect = [mock_response_fail, mock_response_ok]
-        
+
         checker = AgentCardChecker("https://example.com/.well-known/agent-card.json")
         result = checker.validate()
-        
+
         assert result.is_compliant is True
         assert result.attempts == 2
 
@@ -159,17 +159,17 @@ class TestEndpointProberRetry:
         mock_response_fail.raise_for_status.side_effect = httpx.HTTPStatusError(
             "Server Error", request=MagicMock(), response=mock_response_fail
         )
-        
+
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.raise_for_status.return_value = None
         mock_response_ok.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": {}}
-        
+
         mock_post.side_effect = [mock_response_fail, mock_response_ok]
-        
+
         prober = EndpointProber("https://example.com/a2a")
         result = prober.probe("message/send")
-        
+
         assert result.is_compliant is True
         assert result.attempts == 2
         assert mock_post.call_count == 2
@@ -179,10 +179,10 @@ class TestEndpointProberRetry:
     def test_probe_retries_exhausted(self, mock_sleep, mock_post):
         """All probe retries fail — should return error."""
         mock_post.side_effect = httpx.ConnectError("Connection refused")
-        
+
         prober = EndpointProber("https://example.com/a2a", max_retries=3)
         result = prober.probe("message/send")
-        
+
         assert result.is_compliant is False
         assert result.attempts == 3
         assert "Failed to probe endpoint" in result.error
@@ -198,10 +198,9 @@ class TestEndpointProberRetry:
             "Bad Request", request=MagicMock(), response=mock_response
         )
         mock_post.return_value = mock_response
-        
+
         prober = EndpointProber("https://example.com/a2a")
         result = prober.probe("message/send")
-        
+
         assert result.attempts == 1
         assert mock_post.call_count == 1
-

@@ -28,9 +28,7 @@ def _declared_floor() -> tuple:
 
 def _matrix_versions() -> list:
     """Return the Python versions the CI test matrix actually runs on."""
-    match = re.search(
-        r"python-version:\s*\[([^\]]*)\]", CI_WORKFLOW.read_text()
-    )
+    match = re.search(r"python-version:\s*\[([^\]]*)\]", CI_WORKFLOW.read_text())
     assert match, "no python-version matrix list found in .github/workflows/ci.yml"
     return re.findall(r"(\d+\.\d+)", match.group(1))
 
@@ -89,15 +87,11 @@ class TestSourceParsesOnTheFloor:
     def _annotations(tree: ast.Module):
         """Yield every annotation expression in a module."""
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) or isinstance(
-                node, ast.AsyncFunctionDef
-            ):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 annotations = [node.returns] if node.returns else []
                 args = node.args
                 for arg in (
-                    list(args.posonlyargs)
-                    + list(args.args)
-                    + list(args.kwonlyargs)
+                    list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)
                 ):
                     if arg and arg.annotation:
                         annotations.append(arg.annotation)
@@ -119,13 +113,8 @@ class TestSourceParsesOnTheFloor:
                 continue
             for annotation in self._annotations(tree):
                 for node in ast.walk(annotation):
-                    if (
-                        isinstance(node, ast.BinOp)
-                        and isinstance(node.op, ast.BitOr)
-                    ):
-                        offenders.append(
-                            f"{path.relative_to(REPO_ROOT)}:{node.lineno}"
-                        )
+                    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+                        offenders.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
                         break
 
         assert not offenders, (
@@ -135,9 +124,7 @@ class TestSourceParsesOnTheFloor:
             "modules or use typing.Optional/Union: " + ", ".join(offenders)
         )
 
-    @pytest.mark.parametrize(
-        "version", ["3.9"], ids=["declared-floor"]
-    )
+    @pytest.mark.parametrize("version", ["3.9"], ids=["declared-floor"])
     def test_package_imports_cleanly_on_the_declared_floor(self, version):
         """Smoke-test that this interpreter is at or above the floor."""
         import sys

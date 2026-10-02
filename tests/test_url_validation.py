@@ -25,9 +25,7 @@ class TestUrlWellFormedness:
     """A URL that cannot be fetched at all is rejected before any network use."""
 
     def test_url_without_a_scheme_is_rejected(self):
-        assert validate_url("example.com/card.json") == (
-            "invalid URL scheme: (none)"
-        )
+        assert validate_url("example.com/card.json") == ("invalid URL scheme: (none)")
 
     def test_non_http_scheme_is_rejected(self):
         assert validate_url("ftp://example.com/card.json") == (

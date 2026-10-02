@@ -102,14 +102,13 @@ def _render(result: ValidationResult, output_format: str) -> str:
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="a2a-drift",
-        description="Detect A2A protocol compliance drift"
+        prog="a2a-drift", description="Detect A2A protocol compliance drift"
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    def add_network_args(subparser):
+    def add_network_args(subparser: argparse.ArgumentParser) -> None:
         """Add the retry and timeout options shared by every subcommand."""
         subparser.add_argument(
             "--retries",
@@ -166,9 +165,7 @@ def main():
     add_network_args(probe_parser)
 
     # batch command
-    batch_parser = subparsers.add_parser(
-        "batch", help="Batch check multiple agents"
-    )
+    batch_parser = subparsers.add_parser("batch", help="Batch check multiple agents")
     batch_parser.add_argument("--file", required=True, help="File with agent card URLs")
     batch_parser.add_argument(
         "--format", choices=["text", "json", "sarif"], default="text"

@@ -182,9 +182,7 @@ class TestOutputFileWrites:
             card_response(LEGACY_CARD),
         ]
         urls = tmp_path / "agents.txt"
-        urls.write_text(
-            "https://example.com/one.json\nhttps://example.com/two.json\n"
-        )
+        urls.write_text("https://example.com/one.json\nhttps://example.com/two.json\n")
         target = tmp_path / "batch.json"
 
         code, out, _err = run_cli(
@@ -263,16 +261,15 @@ class TestBatchFileErrors:
         assert out == ""
 
     @patch("a2a_drift.httpx.get")
-    def test_batch_sarif_merges_one_run_per_agent(self, mock_get, tmp_path,
-                                                 valid_agent_card):
+    def test_batch_sarif_merges_one_run_per_agent(
+        self, mock_get, tmp_path, valid_agent_card
+    ):
         mock_get.side_effect = [
             card_response(valid_agent_card),
             card_response(LEGACY_CARD),
         ]
         urls = tmp_path / "agents.txt"
-        urls.write_text(
-            "https://example.com/one.json\nhttps://example.com/two.json\n"
-        )
+        urls.write_text("https://example.com/one.json\nhttps://example.com/two.json\n")
 
         code, out, _err = run_cli(["batch", "--file", str(urls), "--format", "sarif"])
 
@@ -301,13 +298,9 @@ class TestBatchFileErrors:
 class TestBatchPerItemException:
     """An unexpected exception on one agent must not abort the batch."""
 
-    def test_unexpected_checker_exception_is_isolated(
-        self, tmp_path, valid_agent_card
-    ):
+    def test_unexpected_checker_exception_is_isolated(self, tmp_path, valid_agent_card):
         urls = tmp_path / "agents.txt"
-        urls.write_text(
-            "https://example.com/boom.json\nhttps://example.com/ok.json\n"
-        )
+        urls.write_text("https://example.com/boom.json\nhttps://example.com/ok.json\n")
         real_checker = AgentCardChecker
 
         def build(url, **kwargs):
