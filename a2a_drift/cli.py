@@ -159,6 +159,14 @@ def main() -> None:
     )
     probe_parser.add_argument("--params", default="{}", help="JSON params")
     probe_parser.add_argument(
+        "--notification",
+        action="store_true",
+        help=(
+            "Send without an 'id' (a JSON-RPC notification) and assert that the "
+            "endpoint sends no response body"
+        ),
+    )
+    probe_parser.add_argument(
         "--format", choices=["text", "json", "sarif"], default="text"
     )
     probe_parser.add_argument("--output", "-o", help="Output file")
@@ -207,7 +215,7 @@ def main() -> None:
             max_retries=args.retries,
             allow_internal=allow_internal,
         )
-        result = prober.probe(args.method, params)
+        result = prober.probe(args.method, params, notification=args.notification)
         out_str = _render(result, args.format)
 
         if args.output:

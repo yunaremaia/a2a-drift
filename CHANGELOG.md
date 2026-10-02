@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `a2a_drift.jsonrpc.validate_method_request()`: A2A method request-schema
+  validation for `message/send`, `tasks/get` and `tasks/cancel`, reported by
+  `probe()` as `jsonrpc-request` drift. Field names follow the A2A payloads
+  (`TaskIdParams.id`, `Message.messageId`/`role`/`parts`); methods without a
+  schema are never reported on.
+- `probe(..., notification=True)` and `a2a-drift probe --notification` send a
+  request with no `id` and assert the endpoint returns no response body, per
+  JSON-RPC 2.0 §4.1.
 - `validate_url()` helper plus `--deny-internal` / `--allow-internal` CLI flags to
   refuse internal, loopback, link-local and reserved addresses (CWE-918).
 - `--spec-version` is now honored: the target version is threaded through to

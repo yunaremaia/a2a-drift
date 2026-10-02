@@ -172,7 +172,11 @@ class TestOutputFileWrites:
         assert out == ""
         doc = json.loads(target.read_text())
         assert doc["version"] == "2.1.0"
-        assert doc["runs"][0]["results"][0]["ruleId"] == "jsonrpc-conformance"
+        # Asserted by membership, not by index: a probe also reports what it
+        # sent, so results[0] is the request-schema finding, not this one.
+        rule_ids = [r["ruleId"] for r in doc["runs"][0]["results"]]
+        assert "jsonrpc-conformance" in rule_ids
+        assert set(rule_ids) == {"jsonrpc-request", "jsonrpc-conformance"}
         assert code == 1
 
     @patch("a2a_drift.httpx.get")

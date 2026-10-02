@@ -60,7 +60,10 @@ a2a-drift check https://example.com/.well-known/agent-card.json --spec-version 0
 a2a-drift check "$AGENT_CARD_URL" --deny-internal
 
 # Probe live endpoints
-a2a-drift probe https://example.com/a2a --method message/send --params '{"message": {"role": "user", "parts": [{"type": "text", "text": "hello"}]}}'
+a2a-drift probe https://example.com/a2a --method message/send --params '{"message": {"messageId": "msg-1", "role": "user", "parts": [{"type": "text", "text": "hello"}]}}'
+
+# Send a notification (no 'id') and assert the endpoint sends no response body
+a2a-drift probe https://example.com/a2a --method tasks/cancel --params '{"id": "task-1"}' --notification
 
 # Batch check multiple agents
 a2a-drift batch --file agents.txt
@@ -86,8 +89,11 @@ print(result.is_compliant)  # bool
 # Probe endpoint
 prober = EndpointProber("https://example.com/a2a")
 result = prober.probe("message/send", {"message": {...}})
-print(result.is_jsonrpc_compliant)
+print(result.jsonrpc_compliant)
 print(result.response_time_ms)
+
+# Send a notification: no 'id' is sent, and a response body is a violation
+result = prober.probe("tasks/cancel", {"id": "task-1"}, notification=True)
 ```
 
 ### CI
@@ -114,6 +120,7 @@ not exist yet.
 | `capability-advertised-but-unsupported` | Card advertises skill/endpoint that returns error on probe | error |
 | `capability-supported-but-unadvertised` | Endpoint works but not listed in agent card | info |
 | `jsonrpc-conformance` | Response violates JSON-RPC 2.0 spec | error |
+| `jsonrpc-request` | Request params do not satisfy the method's A2A schema | warning |
 | `schema-violation` | Agent card fails schema validation against A2A spec | error |
 | `security-transport` | Missing HTTPS or authentication | warning |
 | `streaming-drift` | Streaming capability advertised but SSE fails | error |

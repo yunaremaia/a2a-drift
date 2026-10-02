@@ -13,6 +13,8 @@ from typing import Optional, Union
 
 import httpx
 
+from a2a_drift.jsonrpc import validate_method_request
+
 logger = logging.getLogger(__name__)
 
 
@@ -275,7 +277,18 @@ class EndpointProber:
         self.max_retries = max(1, int(max_retries))
         self.allow_internal = allow_internal
 
-    def probe(self, method: str, params: Optional[dict] = None) -> ValidationResult:
+    def probe(
+        self,
+        method: str,
+        params: Optional[dict] = None,
+        notification: bool = False,
+    ) -> ValidationResult:
+        """Send one JSON-RPC request and validate what comes back.
+
+        With ``notification=True`` the request omits ``id``, which JSON-RPC 2.0
+        defines as a notification: the server must not reply, so an empty body
+        is the compliant outcome and any body at all is the finding.
+        """
         result = ValidationResult(url=self.endpoint_url)
 
         blocked = validate_url(self.endpoint_url, allow_internal=self.allow_internal)
@@ -284,7 +297,21 @@ class EndpointProber:
             result.add_drift("security-transport", "error", blocked)
             return result
 
-        payload = {"jsonrpc": "2.0", "method": method, "params": params or {}, "id": 1}
+        # A notification is identified by the *absence* of 'id'. It must not be
+        # sent as null: null is a request whose id happens to be null, which the
+        # server is required to answer.
+        payload: dict = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+        if not notification:
+            payload["id"] = 1
+
+        # Report what we are about to send before deciding anything about the
+        # response: a request the method schema rejects makes the endpoint's
+        # answer uninterpretable, and saying so is the point of a drift tool.
+        # Severity is warning because the finding is about the request, not the
+        # endpoint -- an endpoint that answers a malformed request correctly is
+        # still compliant, and the exit code must keep saying so.
+        for message in validate_method_request(method, params):
+            result.add_drift("jsonrpc-request", "warning", message)
 
         last_error = None
         response = None
@@ -336,6 +363,24 @@ class EndpointProber:
             )
             # A response was obtained and rejected: conformance is decided.
             result.jsonrpc_compliant = False
+            return result
+
+        if notification:
+            # JSON-RPC 2.0 §4.1: the server MUST NOT reply to a notification.
+            # Silence is therefore the compliant outcome, and any body at all is
+            # a violation -- including a well-formed response, which is worse
+            # than no reply because it looks correct to a human reader.
+            body = response.text or ""
+            if body.strip():
+                result.add_drift(
+                    "jsonrpc-conformance",
+                    "error",
+                    "A JSON-RPC notification must not send a response body, "
+                    f"got {len(body)} bytes",
+                )
+                result.jsonrpc_compliant = False
+                return result
+            result.jsonrpc_compliant = True
             return result
 
         try:
