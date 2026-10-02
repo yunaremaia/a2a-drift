@@ -107,7 +107,7 @@ def main():
         prog="a2a-drift",
         description="Detect A2A protocol compliance drift"
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_network_args(subparser):
         """Add the retry and timeout options shared by every subcommand."""

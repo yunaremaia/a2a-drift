@@ -101,7 +101,12 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
     runs when the caller has opted into blocking internal targets, which is the
     SSRF hardening described in CWE-918.
     """
-    parsed = urllib.parse.urlparse(url)
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError as e:
+        # urlparse raises on a malformed bracketed IPv6 host (e.g. "http://[::1").
+        # Untrusted input must produce a validation message, never a traceback.
+        return f"invalid URL: {e}"
     if parsed.scheme not in ("http", "https"):
         return f"invalid URL scheme: {parsed.scheme or '(none)'}"
     hostname = parsed.hostname

@@ -32,7 +32,10 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest pytest-cov
 
-      # Coverage is reported, not enforced: there is deliberately no --cov-fail-under.
+      # Coverage is enforced from pyproject.toml ([tool.coverage.report]
+      # fail_under), so a local `pytest --cov=a2a_drift` and this job share one
+      # threshold. Do not move the number into a --cov-fail-under flag here:
+      # that would let the local and CI gates drift apart.
       - name: Run tests with coverage
         run: python -m pytest -q --cov=a2a_drift --cov-report=term-missing
 

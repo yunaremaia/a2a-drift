@@ -316,6 +316,36 @@ class TestDenyInternalFlag:
         assert "internal URL blocked" in out
         assert mock_post.call_count == 0
 
+    @patch("a2a_drift.httpx.get")
+    def test_allow_internal_wins_when_both_flags_are_passed(
+        self, mock_get, valid_agent_card
+    ):
+        """Passing both flags currently resolves to "allow internal".
+
+        Documented as a known ambiguity in BACKLOG.md: the flags are
+        independent booleans and the effective value is
+        ``allow_internal or not deny_internal``, so the permissive flag wins.
+        This test pins the current behaviour so a future decision to make them
+        mutually exclusive changes it deliberately.
+        """
+        mock_get.return_value = card_response(valid_agent_card)
+
+        code, out, _err = run_cli(
+            [
+                "check",
+                "http://127.0.0.1:9999/agent-card.json",
+                "--deny-internal",
+                "--allow-internal",
+                "--format",
+                "json",
+            ]
+        )
+
+        assert code == 0
+        assert json.loads(out)["is_compliant"] is True
+        assert mock_get.call_count == 1
+
+
 class TestModuleEntryPoint:
     """`python -m a2a_drift` must dispatch to the CLI, not just re-export names."""
 

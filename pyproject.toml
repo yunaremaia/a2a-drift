@@ -27,3 +27,19 @@ markers = [
     "unit: isolated unit tests",
     "slow: tests that make real network calls",
 ]
+
+# The coverage floor is a single source of truth for both local runs and CI:
+# pytest-cov reads it from here, so a local `pytest --cov=a2a_drift` fails
+# exactly like CI does.
+#
+# 100 is not aspirational, it is enforced. coverage's fail_under compares the
+# total rounded to whole percent, so a lower value (e.g. 99) would let a real
+# 99.5% total pass. 100 additionally special-cases "must be exactly 100", which
+# is what makes the gate strict rather than advisory. Every statement in
+# a2a_drift is covered by a test, so nothing is being hidden from this number.
+[tool.coverage.run]
+source = ["a2a_drift"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true

@@ -16,6 +16,9 @@ All notable changes to this project will be documented in this file.
 - CI now tests Python 3.9, the floor declared in `pyproject.toml`.
 - `test_packaging.py` fails if `requires-python` and the CI matrix drift apart, or
   if 3.10+-only syntax (PEP 604 `X | None` unions) sneaks into the package.
+- A coverage floor of 100% is enforced from `pyproject.toml`
+  (`[tool.coverage.report] fail_under`), so the CI test job now fails when
+  coverage regresses instead of only reporting it.
 
 ### Changed
 
@@ -31,6 +34,13 @@ All notable changes to this project will be documented in this file.
 - `--format sarif` emits a real SARIF 2.1.0 document; it previously accepted the
   flag and printed the human-readable text report.
 - A missing `--file` for `batch` reports a clean error instead of a traceback.
+- Running the CLI with no subcommand (`python -m a2a_drift`, `a2a-drift`) no
+  longer crashes with `AttributeError: 'Namespace' object has no attribute
+  'allow_internal'`; it now prints usage and exits 2, like any other argument
+  error.
+- A malformed bracketed IPv6 URL (for example `http://[::1`) is reported as an
+  `invalid URL` validation message instead of raising `ValueError` out of
+  `validate_url` as an unhandled traceback.
 
 ## [Initial Release]
 

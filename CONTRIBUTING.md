@@ -79,8 +79,10 @@ network calls; none exist yet. Mixed test modules may remain unmarked.
 The existing tests mock HTTP requests; you do not need a live agent, credentials,
 or a public endpoint. Follow this pattern for new tests, and mock backoff sleeps
 when testing retries. Test the failing case before fixing a bug, then run the
-whole suite. Coverage output helps identify untested branches; no coverage
-threshold is configured yet.
+whole suite. Coverage output helps identify untested branches, and a coverage
+floor is enforced: `pyproject.toml` sets `fail_under = 100` under
+`[tool.coverage.report]`, so a run below full coverage exits non-zero. Cover new
+code with a test rather than lowering the number or excluding the file.
 
 Only probe endpoints you own or have permission to test. Do not put real tokens,
 private agent cards, or customer responses in fixtures or issue reports.
