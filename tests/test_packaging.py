@@ -1,8 +1,9 @@
-"""Guards that keep ``requires-python`` honest.
+"""Guards that keep ``requires-python`` and the dev extra honest.
 
-The declared floor is only a promise if something checks it. These tests fail
-whenever the metadata and the code drift apart, so the floor can never quietly
-become a lie again.
+The declared floor is only a promise if something checks it, and the ``dev``
+extra is only usable if it exists. These tests fail whenever the metadata and
+the code drift apart -- or when CI names a tool the extra has never heard of --
+so neither can quietly become a lie again.
 """
 
 import ast
@@ -15,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PACKAGE_DIR = REPO_ROOT / "a2a_drift"
+CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 
 
 def _declared_floor() -> tuple:
@@ -135,4 +137,107 @@ class TestSourceParsesOnTheFloor:
         assert current >= floor, (
             f"running Python {current[0]}.{current[1]} is below the declared "
             f"floor {floor[0]}.{floor[1]}"
+        )
+
+
+def _dev_extra() -> list:
+    """Return the requirement names declared in the ``dev`` extra.
+
+    Read from the raw TOML text rather than ``tomllib``: the 3.9 leg of the CI
+    matrix has no ``tomllib`` (it is 3.11+), and this module already parses
+    ``pyproject.toml`` with regexes for the same reason.
+    """
+    text = PYPROJECT.read_text()
+    section = re.search(
+        r"^\[project\.optional-dependencies\]\s*$(.*?)(?=^\[|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert section, (
+        "pyproject.toml declares no [project.optional-dependencies], so "
+        "`pip install -e '.[dev]'` installs nothing beyond the package itself"
+    )
+
+    dev = re.search(r"^dev\s*=\s*\[(.*?)\]", section.group(1), re.DOTALL | re.MULTILINE)
+    assert dev, (
+        "pyproject.toml declares [project.optional-dependencies] but no 'dev' "
+        "extra, so `pip install -e '.[dev]'` still installs no tools"
+    )
+
+    return [
+        req.strip().strip('"').strip("'")
+        for req in dev.group(1).split(",")
+        if req.strip()
+    ]
+
+
+def _requirement_name(requirement: str) -> str:
+    """The distribution name of a requirement, without extras or a version pin."""
+    return re.split(r"[<>=!~ ;\[]", requirement, maxsplit=1)[0].strip().lower()
+
+
+def _ci_installed_tools() -> set:
+    """Distribution names CI installs by name, excluding ``pip`` and ``-e .``.
+
+    This is the coupling that makes the extra honest: if a tool is added to a
+    CI install step, it is a development dependency, and a contributor running
+    ``pip install -e '.[dev]'`` should get it.
+    """
+    tools = set()
+    for line in CI_WORKFLOW.read_text().splitlines():
+        match = re.search(r"python -m pip install\s+(.*)$", line)
+        if not match:
+            continue
+        args = match.group(1).split()
+        # `-e .` is the project itself and `--upgrade pip` is pip, not a tool.
+        if any(arg in {"-e", "--upgrade", "."} for arg in args):
+            continue
+        tools.update(_requirement_name(arg) for arg in args)
+    return tools
+
+
+class TestDevExtraIsDeclared:
+    """``pip install -e '.[dev]'`` must actually install the dev tools.
+
+    pip does not fail on an unknown extra: it warns and exits 0, so the
+    documented setup command looked like it worked while providing no tools at
+    all. CI masked it by installing pytest/ruff/mypy by hand.
+    """
+
+    def test_the_dev_extra_is_declared(self):
+        extra = _dev_extra()
+
+        assert extra, "the dev extra is declared but empty"
+
+    @pytest.mark.parametrize(
+        "tool",
+        ["pytest", "pytest-cov", "ruff", "mypy"],
+        ids=["pytest", "pytest-cov", "ruff", "mypy"],
+    )
+    def test_each_tool_this_project_uses_is_in_the_extra(self, tool):
+        """These four are what CI and CONTRIBUTING tell contributors to run."""
+        declared = [_requirement_name(req) for req in _dev_extra()]
+
+        assert tool in declared, (
+            f"'{tool}' is installed by CI and named in CONTRIBUTING.md but is "
+            f"missing from the [dev] extra (declared: {declared or 'nothing'})"
+        )
+
+    def test_every_tool_ci_installs_is_in_the_extra(self):
+        """The general rule behind the four cases above."""
+        declared = {_requirement_name(req) for req in _dev_extra()}
+        missing = sorted(_ci_installed_tools() - declared)
+        installed = sorted(declared) or "nothing"
+
+        assert not missing, (
+            f"CI installs {missing} by name, so they are development "
+            f"dependencies, but the [dev] extra declares only {installed}"
+        )
+
+    def test_contributing_points_at_the_extra(self):
+        """The docs must tell contributors to use the extra that now exists."""
+        assert ".[dev]" in CONTRIBUTING.read_text(), (
+            "CONTRIBUTING.md still tells contributors to install dev tools "
+            "explicitly; it should document `pip install -e '.[dev]'` now that "
+            "the extra exists"
         )

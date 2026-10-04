@@ -14,6 +14,26 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+# The declared development setup. Before this existed, `pip install -e ".[dev]"`
+# installed nothing beyond the package: pip only *warns* on an unknown extra
+# and still exits 0, so the documented command looked like it worked and left a
+# contributor with no pytest, no ruff and no mypy. CI hid the gap by naming the
+# tools in its own install steps.
+#
+# The floors are the lowest versions that run this repository's checks, not the
+# newest ones: pytest 7 is the first with the `testpaths`/`addopts` ini options
+# used here, pytest-cov 4 reports the coverage this project gates on, and ruff
+# 0.6 is the first release where `[tool.ruff.lint]` nests the selection that
+# `[tool.ruff]` previously read. `test_packaging.py` fails if CI starts
+# installing a tool this extra does not declare, so the two cannot drift apart.
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.6.0",
+    "mypy>=1.0",
+]
+
 [project.scripts]
 a2a-drift = "a2a_drift.cli:main"
 

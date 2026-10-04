@@ -36,8 +36,11 @@ or, for development:
 ```bash
 git clone https://github.com/yunaremaia/a2a-drift.git
 cd a2a-drift
-pip install -e .
+pip install -e ".[dev]"
 ```
+
+The `dev` extra installs `pytest`, `pytest-cov`, `ruff` and `mypy` — the tools CI
+runs.
 
 ## Usage
 

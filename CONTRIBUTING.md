@@ -44,16 +44,16 @@ Or in Windows PowerShell:
 If PowerShell blocks activation, use `.\.venv\Scripts\python.exe` instead of
 `python` in the remaining commands; changing the execution policy is unnecessary.
 
-Install the editable package and development tools:
+Install the editable package and its development tools:
 
 ```sh
-python -m pip install -e . pytest pytest-cov ruff
+python -m pip install -e ".[dev]"
 python -m a2a_drift.cli --help
 ```
 
-Development tools are installed explicitly because the project does not currently
-define a development dependency extra. `python -m a2a_drift.cli` runs the CLI
-module from this checkout without relying on an installed console script.
+The `dev` extra installs the same tools CI runs: `pytest`, `pytest-cov`, `ruff`
+and `mypy`. `python -m a2a_drift.cli` runs the CLI module from this checkout
+without relying on an installed console script.
 
 ## Tests
 
