@@ -71,6 +71,25 @@ def _normalize_spec_version(raw: object) -> Optional[str]:
     return candidate if candidate in AgentCardChecker.SPEC_VERSIONS else None
 
 
+def _normalize_target_spec_version(raw: object) -> Optional[str]:
+    """Return the spec version a ``--spec-version`` target names, or ``None``.
+
+    The target is normalised through the same helper as the detected
+    ``protocolVersion`` so both sides of the comparison live in one space. That
+    symmetry is the whole point: comparing a normalised ``"1.0"`` against a raw
+    ``"1.0.0"`` reported drift against an agent that is perfectly conformant.
+
+    A leading ``v`` is accepted (``v1.0`` -> ``1.0``) because it is how the
+    version is conventionally written, and it is not part of the version.
+    ``None`` means the target names no known version -- empty, whitespace, or
+    nonsense -- and the caller must decide what to do about it.
+    """
+    text = str(raw or "").strip()
+    if text[:1] in ("v", "V"):
+        text = text[1:]
+    return _normalize_spec_version(text)
+
+
 def _should_retry(exc: Exception) -> bool:
     """Determine if an HTTP exception is retryable."""
     if isinstance(exc, httpx.TimeoutException):
@@ -255,8 +274,31 @@ class AgentCardChecker:
         # max_retries is an attempt count, so it must never drop below 1: a range
         # of zero iterations leaves `response` unbound and crashes further down.
         self.max_retries = max(1, int(max_retries))
-        self.target_spec_version = target_spec_version or self.CURRENT_SPEC
+        self.target_spec_version = self._resolve_target(target_spec_version)
         self.allow_internal = allow_internal
+
+    @classmethod
+    def _resolve_target(cls, target_spec_version: Optional[str]) -> str:
+        """Return the normalised spec version to measure drift against.
+
+        ``None`` means the caller expressed no preference, so the current spec is
+        the target. Anything else is an explicit choice and must name a spec we
+        know: `target_spec_version or CURRENT_SPEC` folded an empty or blank
+        string into the default, so `--spec-version ''` in a CI matrix ran
+        exactly as if the flag had been omitted. Raising here keeps the typo
+        visible at the boundary instead of producing a check that quietly
+        measures the wrong thing and exits 0.
+        """
+        if target_spec_version is None:
+            return cls.CURRENT_SPEC
+        normalized = _normalize_target_spec_version(target_spec_version)
+        if normalized is None:
+            accepted = ", ".join(cls.SPEC_VERSIONS)
+            raise ValueError(
+                f"invalid spec version {str(target_spec_version)!r}; "
+                f"expected one of: {accepted}"
+            )
+        return normalized
 
     def validate(self) -> ValidationResult:
         result = ValidationResult(url=self.url)

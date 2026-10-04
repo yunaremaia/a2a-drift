@@ -37,6 +37,20 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `--spec-version` normalises the target the same way the detected
+  `protocolVersion` is normalised, instead of comparing a normalised value
+  against a raw command-line string. `1.0.0`, `1.0-rc.1`, `1.0+build.7` and a
+  leading `v` (`v1.0`) now measure as `1.0`, so an equivalent spelling no
+  longer reports phantom drift against a conformant agent. A target that names
+  no known spec version (`banana`, `9.9`, `1`) is now rejected by argparse with
+  exit code 2, before any request is issued, instead of being accepted silently
+  and exiting 0; an empty or whitespace-only `--spec-version` is rejected too,
+  where `target_spec_version or CURRENT_SPEC` had folded it into the default
+  and made a typo indistinguishable from an omitted flag.
+  `AgentCardChecker(target_spec_version=...)` raises `ValueError` on the same
+  unusable values rather than quietly measuring against the current spec.
+  Unchanged on purpose: a genuine mismatch (a 0.3 agent against a 1.0 target)
+  is still reported, with the same severity and message.
 - A non-UTF-8 agent card body is reported as a `json-decode-error` finding with
   a non-zero exit code, instead of raising an uncaught `UnicodeDecodeError` out
   of `validate()`. `issubclass(UnicodeDecodeError, json.JSONDecodeError)` is

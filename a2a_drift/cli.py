@@ -9,6 +9,7 @@ from a2a_drift import (
     EndpointProber,
     ValidationResult,
     __version__,
+    _normalize_target_spec_version,
 )
 
 SARIF_LEVELS = {"error": "error", "warning": "warning", "info": "note"}
@@ -51,6 +52,25 @@ def _positive_int(value: str) -> int:
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return parsed
+
+
+def _spec_version(value: str) -> str:
+    """argparse type for --spec-version: normalise it, or refuse the argument.
+
+    Rejecting here rather than warning is the point. A target that names no
+    known spec version is a typo, and a typo in CI has to stop the run: falling
+    back to the current spec would measure the agent against something the
+    author never asked for and still exit 0, making the mistake indistinguishable
+    from a clean run. argparse turns ArgumentTypeError into exit code 2, before
+    the checker is constructed and before any request is issued.
+    """
+    normalized = _normalize_target_spec_version(value)
+    if normalized is None:
+        accepted = ", ".join(AgentCardChecker.SPEC_VERSIONS)
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not a known A2A spec version (expected one of: {accepted})"
+        )
+    return normalized
 
 
 def _render(result: ValidationResult, output_format: str) -> str:
@@ -143,7 +163,15 @@ def main() -> None:
     check_parser = subparsers.add_parser("check", help="Validate an agent card")
     check_parser.add_argument("url", help="URL of the agent card")
     check_parser.add_argument(
-        "--spec-version", default="1.0", help="Target spec version (default: 1.0)"
+        "--spec-version",
+        type=_spec_version,
+        default=AgentCardChecker.CURRENT_SPEC,
+        metavar="VERSION",
+        help=(
+            "Target spec version (default: 1.0). Accepts a leading 'v', a "
+            "patch/pre-release suffix (1.0.0, 1.0-rc.1); a value naming no "
+            "known version is an error."
+        ),
     )
     check_parser.add_argument(
         "--format", choices=["text", "json", "sarif"], default="text"
