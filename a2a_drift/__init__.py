@@ -133,6 +133,26 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
 # control, so it matches httpx's own default rather than inventing a new one.
 MAX_REDIRECTS = 20
 
+# Distinguishes "this key is absent" from "this key holds null". A bare
+# ``card.get(key)`` collapses the two into None, which is exactly what made a
+# stored ``capabilities: null`` indistinguishable from an absent key.
+_MISSING = object()
+
+
+def _is_empty_value(value: object, allow_empty: bool) -> bool:
+    """Return True when ``value`` is unusable for a required field.
+
+    ``allow_empty`` carries the per-field decision recorded in
+    ``AgentCardChecker.REQUIRED_FIELD_EXPECTATIONS``: an empty capabilities
+    object is a real (if minimal) declaration, while an empty string is not.
+    Strings are stripped before the test, because ``"   "`` is truthy in
+    Python and would otherwise pass as a name or a url.
+    """
+    if isinstance(value, str):
+        return not value.strip()
+    return not value and not allow_empty
+
+
 # Statuses whose Location header names a request to make, as opposed to 304
 # Not Modified, which is a cache answer with no target to follow.
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -200,6 +220,25 @@ class AgentCardChecker:
     """Validate an A2A agent card against the spec and detect drift."""
 
     REQUIRED_FIELDS = ["name", "description", "url", "version", "capabilities"]
+
+    # What each required field must actually *contain*, not merely have a key
+    # for. `field_name in card` proved presence and nothing else, so a card
+    # whose required fields were all null, wrong-typed or empty strings
+    # reported zero drift and exited 0.
+    #
+    # The value is (expected type, empty value allowed?). An empty *object* is
+    # a legitimate capabilities declaration -- the card still says something --
+    # so it is allowed here and reported separately as a warning, exactly as
+    # before. An empty *string* is not: a blank name or url tells a peer agent
+    # nothing, so it is an error like any other unusable value.
+    REQUIRED_FIELD_EXPECTATIONS = {
+        "name": (str, False),
+        "description": (str, False),
+        "url": (str, False),
+        "version": (str, False),
+        "capabilities": (dict, True),
+    }
+
     SPEC_VERSIONS = ["0.3", "1.0"]
     CURRENT_SPEC = "1.0"
 
@@ -277,6 +316,19 @@ class AgentCardChecker:
 
         try:
             card = response.json()
+        except UnicodeDecodeError as e:
+            # A body that is not valid UTF-8 never reached the JSON parser, so
+            # this is NOT "not valid JSON": the bytes are attacker-controlled on
+            # the untrusted-URL fetch path that --deny-internal exists to guard,
+            # and `issubclass(UnicodeDecodeError, json.JSONDecodeError)` is False
+            # (it inherits ValueError), so the except below never caught it and
+            # the exception escaped validate() as a traceback. Named apart so the
+            # operator can tell an encoding failure from a syntax failure.
+            result.error = (
+                f"Agent card is not valid UTF-8 and could not be decoded: {e}"
+            )
+            result.add_drift("json-decode-error", "error", result.error)
+            return result
         except json.JSONDecodeError as e:
             result.error = f"Agent card is not valid JSON: {e}"
             result.add_drift("json-parse-error", "error", result.error)
@@ -291,14 +343,44 @@ class AgentCardChecker:
             result.add_drift("schema-violation", "error", result.error, path="$")
             return result
 
-        # Check required fields
+        # Check required fields, by value rather than by key presence.
         for field_name in self.REQUIRED_FIELDS:
-            if field_name not in card:
+            expected_type, allow_empty = self.REQUIRED_FIELD_EXPECTATIONS[field_name]
+            path = f"$.{field_name}"
+            # `.get` with the sentinel, never indexing: `in` plus `[key]` cannot
+            # tell "absent" from "present but null", and both need naming.
+            value = card.get(field_name, _MISSING)
+            if value is _MISSING:
                 result.add_drift(
                     "schema-violation",
                     "error",
                     f"Missing required field: {field_name}",
-                    path=f"$.{field_name}",
+                    path=path,
+                )
+            elif value is None:
+                result.add_drift(
+                    "schema-violation",
+                    "error",
+                    f"Required field {field_name} is null",
+                    path=path,
+                )
+            elif not isinstance(value, expected_type):
+                result.add_drift(
+                    "schema-violation",
+                    "error",
+                    f"Required field {field_name} must be "
+                    f"{expected_type.__name__}, got {type(value).__name__}",
+                    path=path,
+                )
+            elif _is_empty_value(value, allow_empty):
+                # An empty object is a real capabilities declaration and stays a
+                # warning below; a blank string is an unusable value. Whitespace
+                # counts as blank: `"   "` is truthy in Python but names nothing.
+                result.add_drift(
+                    "schema-violation",
+                    "error",
+                    f"Required field {field_name} is empty",
+                    path=path,
                 )
 
         # Check spec version. Match the leading major.minor component only:
@@ -322,9 +404,13 @@ class AgentCardChecker:
                 f"Could not determine A2A spec version (got: {proto_version})",
             )
 
-        # Check capabilities
-        capabilities = card.get("capabilities", {})
-        if not capabilities:
+        # Check capabilities. A stored null is already reported above as
+        # "Required field capabilities is null"; `card.get(..., {})` returned
+        # that None and `if not capabilities` then reported "No capabilities
+        # declared", so null and {} produced byte-identical output. Now only a
+        # dict that is genuinely empty earns the warning.
+        capabilities = card.get("capabilities", _MISSING)
+        if isinstance(capabilities, dict) and not capabilities:
             result.add_drift(
                 "capability-advertised-but-unsupported",
                 "warning",

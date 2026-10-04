@@ -37,6 +37,23 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- A non-UTF-8 agent card body is reported as a `json-decode-error` finding with
+  a non-zero exit code, instead of raising an uncaught `UnicodeDecodeError` out
+  of `validate()`. `issubclass(UnicodeDecodeError, json.JSONDecodeError)` is
+  False (it inherits `ValueError`), so the `except json.JSONDecodeError` around
+  the parse never fired; the CLI printed no report and a traceback aborted a
+  whole `batch` run. Decoding is named apart from JSON syntax on purpose: a
+  body that never decoded was never parsed, and the two need different fixes.
+- `check` isolates an unexpected checker failure the way `batch` already did
+  per URL, so a caller-supplied URL can no longer cost the operator the report.
+- Required agent-card fields are validated by *value*, not by key presence. A
+  card whose `name`, `description`, `url`, `version` or `capabilities` was
+  `null`, held a wrong type (a number where a string belongs), or held a blank
+  string now reports a `schema-violation` and exits 1; it previously reported
+  `is_compliant=true`, `drift_count=0` and exit 0. The finding distinguishes
+  *absent*, *present but null*, *present but wrong type* and *present but
+  empty*, and reads with `.get` so a stored null is not read as an absent key.
+  Unchanged on purpose: `capabilities={}` stays a warning.
 - A JSON array, `null`, string or number agent card is reported as a
   `schema-violation` finding instead of raising `AttributeError`/`TypeError`.
 - `--format sarif` emits a real SARIF 2.1.0 document; it previously accepted the

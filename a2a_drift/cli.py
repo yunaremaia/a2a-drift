@@ -193,7 +193,17 @@ def main() -> None:
             target_spec_version=args.spec_version,
             allow_internal=allow_internal,
         )
-        result = checker.validate()
+        # Same isolation `batch` applies per URL. The tool's contract is a
+        # report plus an exit code, never a traceback: this URL is the one the
+        # operator most often got from an untrusted source, so an unforeseen
+        # failure here must not cost them the report. The finding names the
+        # exception type, so nothing is hidden by catching it.
+        try:
+            result = checker.validate()
+        except Exception as e:  # noqa: BLE001 - never crash on a caller URL
+            result = ValidationResult(url=args.url)
+            result.error = f"{type(e).__name__}: {e}"
+            result.add_drift("internal-error", "error", result.error)
         out_str = _render(result, args.format)
 
         if args.output:

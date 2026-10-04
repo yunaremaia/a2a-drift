@@ -122,6 +122,8 @@ not exist yet.
 | `jsonrpc-conformance` | Response violates JSON-RPC 2.0 spec | error |
 | `jsonrpc-request` | Request params do not satisfy the method's A2A schema | warning |
 | `schema-violation` | Agent card fails schema validation against A2A spec | error |
+| `json-decode-error` | Agent card body is not valid UTF-8 and could not be decoded | error |
+| `json-parse-error` | Agent card body is not valid JSON | error |
 | `security-transport` | Missing HTTPS or authentication | warning |
 | `streaming-drift` | Streaming capability advertised but SSE fails | error |
 
