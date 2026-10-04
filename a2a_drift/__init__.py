@@ -127,6 +127,75 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
     return None
 
 
+# A redirect chain is walked by hand (see ``_fetch_following_redirects``), so
+# this bounds how many hops one check will follow. httpx defaults to 20; the
+# value only has to stop an unbounded loop against a host the caller does not
+# control, so it matches httpx's own default rather than inventing a new one.
+MAX_REDIRECTS = 20
+
+# Statuses whose Location header names a request to make, as opposed to 304
+# Not Modified, which is a cache answer with no target to follow.
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
+class _RedirectBlocked(Exception):
+    """A redirect destination was refused by the same policy as the first URL.
+
+    Distinct from a fetch error because it is a verdict on the address the
+    request *would* have reached, not a failure to get there. Reporting it as
+    ``fetch-error`` would retry it and lose the security meaning.
+    """
+
+
+def _next_hop(url: str, response: httpx.Response) -> Optional[str]:
+    """Return the absolute URL a redirect response points at, or ``None``.
+
+    ``None`` means this response is final: either not a redirect at all, or a
+    redirect with no usable ``Location``. A relative ``Location`` is resolved
+    against the URL that produced it, so the next hop is always an absolute
+    URL the guard can check as written.
+    """
+    if response.status_code not in _REDIRECT_STATUSES:
+        return None
+    location = response.headers.get("location")
+    if not location:
+        return None
+    return urllib.parse.urljoin(url, location)
+
+
+def _fetch_following_redirects(
+    url: str, timeout: float, allow_internal: bool
+) -> httpx.Response:
+    """GET ``url``, applying the deny-internal policy to every hop.
+
+    ``httpx.get(..., follow_redirects=True)`` hands the choice of final
+    destination to the remote party: a public URL answering
+    ``302 Location: http://127.0.0.1:PORT/`` was fetched anyway and reported
+    compliant, because the guard had only ever seen the URL as written. That is
+    the standard SSRF pivot, and it defeats a blocklist that inspects one URL.
+
+    So redirects are followed here one hop at a time, and each destination is
+    validated *before* the request to it is issued. The policy therefore holds
+    for the address actually contacted rather than the address asked for.
+
+    Raises ``_RedirectBlocked`` if any hop is refused, and
+    ``httpx.TooManyRedirects`` if the chain never terminates.
+    """
+    current = url
+    for _hop in range(MAX_REDIRECTS + 1):
+        response = httpx.get(current, timeout=timeout, follow_redirects=False)
+        target = _next_hop(current, response)
+        if target is None:
+            return response
+        # Checked before the request, not after: once the hop is issued the
+        # internal address has already been contacted.
+        blocked = validate_url(target, allow_internal=allow_internal)
+        if blocked:
+            raise _RedirectBlocked(f"redirect to {target} blocked: {blocked}")
+        current = target
+    raise httpx.TooManyRedirects(f"more than {MAX_REDIRECTS} redirects: {url}")
+
+
 class AgentCardChecker:
     """Validate an A2A agent card against the spec and detect drift."""
 
@@ -164,12 +233,20 @@ class AgentCardChecker:
         response = None
         for attempt in range(self.max_retries):
             try:
-                response = httpx.get(
-                    self.url, timeout=self.timeout, follow_redirects=True
+                response = _fetch_following_redirects(
+                    self.url, self.timeout, self.allow_internal
                 )
                 response.raise_for_status()
                 result.attempts = attempt + 1
                 break
+            except _RedirectBlocked as e:
+                # The chain reached an address the policy refuses. That is a
+                # security finding, not a transient failure: retrying would
+                # re-run the same refused check, so it is reported at once.
+                result.error = str(e)
+                result.add_drift("security-transport", "error", result.error)
+                result.attempts = attempt + 1
+                return result
             except (httpx.HTTPError, Exception) as e:
                 last_error = e
                 if _should_retry(e) and attempt < self.max_retries - 1:

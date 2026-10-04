@@ -49,6 +49,15 @@ All notable changes to this project will be documented in this file.
 - A malformed bracketed IPv6 URL (for example `http://[::1`) is reported as an
   `invalid URL` validation message instead of raising `ValueError` out of
   `validate_url` as an unhandled traceback.
+- `--deny-internal` is enforced on the destination actually contacted, not only
+  on the URL as written. A public URL answering `302 Location:
+  http://127.0.0.1:PORT/` had its redirect followed with `follow_redirects=True`
+  while the guard had only ever inspected the first URL, so the internal card was
+  fetched and reported compliant with exit code 0 (CWE-918, the standard SSRF
+  pivot). Redirects are now followed one hop at a time and each destination is
+  validated before it is requested, so a refused hop is reported as a
+  `security-transport` error and its address is never contacted. Chains are
+  bounded at `MAX_REDIRECTS` hops; `--allow-internal` is unchanged.
 
 ## [Initial Release]
 
