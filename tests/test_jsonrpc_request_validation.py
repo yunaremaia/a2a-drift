@@ -247,6 +247,60 @@ class TestProbeSendsARequestIdByDefault:
         assert payload["method"] == "tasks/get"
 
 
+class TestProbeOmitsAbsentParams:
+    """``params`` is optional in JSON-RPC 2.0, so an absent value must be absent.
+
+    The payload used to be built with ``params or {}``, which meant every falsy
+    value a caller supplied -- ``[]``, ``0``, ``False``, ``""`` -- became an
+    empty object on the wire while ``validate_method_request()`` was handed the
+    original and named its type. The report then described a request the
+    endpoint never received (issue #44).
+    """
+
+    def _sent_payload(self, params):
+        with patch("a2a_drift.httpx.post") as mock_post:
+            mock_post.return_value = rpc_response(
+                {"jsonrpc": "2.0", "id": 1, "result": {}}
+            )
+            EndpointProber("https://example.com/a2a").probe("tasks/get", params)
+
+        return mock_post.call_args.kwargs["json"]
+
+    def test_no_params_argument_sends_no_params_member(self):
+        assert "params" not in self._sent_payload(None)
+
+    @pytest.mark.parametrize(
+        "params",
+        [[], 0, False, "", {}, {"id": "t"}],
+        ids=["array", "zero", "false", "empty-string", "empty-object", "object"],
+    )
+    def test_any_supplied_value_reaches_the_wire_verbatim(self, params):
+        sent = self._sent_payload(params)["params"]
+        assert sent == params
+        # `0 == False` in Python, so equality alone cannot tell an integer zero
+        # from a boolean false on the wire.
+        assert type(sent) is type(params)
+
+    def test_the_finding_and_the_wire_name_the_same_value(self):
+        """The regression itself: the report describes the request that was sent.
+
+        An empty array is the case from the issue. A *non-empty* array would
+        pass even on the unfixed code -- `[1, 2]` is truthy, so `params or {}`
+        kept it -- which is why the control above is a non-empty object.
+        """
+        with patch("a2a_drift.httpx.post") as mock_post:
+            mock_post.return_value = rpc_response(
+                {"jsonrpc": "2.0", "id": 1, "result": {}}
+            )
+            result = EndpointProber("https://example.com/a2a").probe("tasks/get", [])
+
+        sent = mock_post.call_args.kwargs["json"]["params"]
+        assert sent == [], f"the wire carried {sent!r}, not the typed []"
+        assert [
+            d.message for d in result.drift if d.drift_type == "jsonrpc-request"
+        ] == ["params must be a JSON object, got list"]
+
+
 class TestNotifications:
     """A request without an id is a notification: JSON-RPC 2.0 says the server
     must not reply to one, so an empty body is the compliant outcome and any

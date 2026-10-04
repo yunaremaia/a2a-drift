@@ -485,7 +485,7 @@ class EndpointProber:
     def probe(
         self,
         method: str,
-        params: Optional[dict] = None,
+        params: Optional[object] = None,
         notification: bool = False,
     ) -> ValidationResult:
         """Send one JSON-RPC request and validate what comes back.
@@ -493,6 +493,13 @@ class EndpointProber:
         With ``notification=True`` the request omits ``id``, which JSON-RPC 2.0
         defines as a notification: the server must not reply, so an empty body
         is the compliant outcome and any body at all is the finding.
+
+        ``params`` is forwarded to the endpoint exactly as supplied and is
+        validated as-is, so the findings always describe the request that was
+        actually sent. The type is ``object`` rather than ``dict`` on purpose:
+        a caller may legitimately hand us a JSON array, string, number or
+        boolean, and each is a value the operator chose, not an error to be
+        silently replaced.
         """
         result = ValidationResult(url=self.endpoint_url)
 
@@ -505,7 +512,18 @@ class EndpointProber:
         # A notification is identified by the *absence* of 'id'. It must not be
         # sent as null: null is a request whose id happens to be null, which the
         # server is required to answer.
-        payload: dict = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+        #
+        # `params` is optional in JSON-RPC 2.0, so an absent value omits the
+        # member entirely. This used to be `params or {}`, which tested
+        # *truthiness* rather than absence: every falsy JSON value a caller
+        # supplied -- [], 0, false, "" -- became an empty object on the wire,
+        # while validate_method_request() below was handed the original and
+        # named its type. The finding then described a request the endpoint
+        # never received, and the run's conformance verdict was attributed to
+        # the wrong payload (issue #44).
+        payload: dict = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            payload["params"] = params
         if not notification:
             payload["id"] = 1
 

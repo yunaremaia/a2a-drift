@@ -254,6 +254,122 @@ class TestProbeParamsParsing:
         assert mock_post.call_args.kwargs["json"]["method"] == "tasks/get"
 
 
+# Falsy JSON values that are still real values: each parses to a non-None
+# object that a user deliberately typed, so each has to reach the wire.
+FALSY_PARAMS = [
+    ("[]", []),
+    ("0", 0),
+    ('""', ""),
+    ("false", False),
+]
+
+
+class TestProbeParamsReachTheWireUnchanged:
+    """The `params` member must carry exactly the value that was typed.
+
+    ``probe()`` built its payload with ``params or {}``, so every falsy JSON
+    value -- ``[]``, ``0``, ``false``, ``""`` -- was swapped for an empty
+    object *before* the request was issued, while ``validate_method_request()``
+    was handed the original and named its type. The finding then described a
+    request the endpoint never received, and the JSON-RPC verdict for the run
+    was attributed to the wrong payload (issue #44).
+
+    "Not supplied" is a different thing from "supplied a falsy value", and the
+    payload is where the two are told apart: an omitted ``--params`` sends no
+    ``params`` member at all, because JSON-RPC 2.0 allows it to be absent,
+    while ``--params 0`` sends ``0``.
+    """
+
+    @patch("a2a_drift.httpx.post")
+    def test_an_omitted_flag_sends_no_params_member(self, mock_post):
+        mock_post.return_value = rpc_response(VALID_RPC)
+
+        run_cli(["probe", "https://example.com/a2a", "--method", "tasks/get"])
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "params" not in payload
+        # Positive control: only `params` is absent. The request is still a
+        # well-formed JSON-RPC request, so this is not "nothing was sent".
+        assert payload == {"jsonrpc": "2.0", "method": "tasks/get", "id": 1}
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        FALSY_PARAMS,
+        ids=["array", "zero", "empty-string", "false"],
+    )
+    @patch("a2a_drift.httpx.post")
+    def test_falsy_params_are_sent_verbatim(self, mock_post, raw, expected):
+        mock_post.return_value = rpc_response(VALID_RPC)
+
+        run_cli(["probe", "https://example.com/a2a", "--params", raw])
+
+        sent = mock_post.call_args.kwargs["json"]["params"]
+        assert sent == expected
+        # `0 == False` and `False == []` is False, so equality alone cannot
+        # tell an integer zero from a boolean false on the wire.
+        assert type(sent) is type(expected)
+
+    @patch("a2a_drift.httpx.post")
+    def test_an_explicit_empty_object_is_still_sent(self, mock_post):
+        """The control from the issue: a non-empty object is already verbatim."""
+        mock_post.return_value = rpc_response(VALID_RPC)
+
+        run_cli(["probe", "https://example.com/a2a", "--params", '{"id": "t-1"}'])
+
+        assert mock_post.call_args.kwargs["json"]["params"] == {"id": "t-1"}
+
+    @patch("a2a_drift.httpx.post")
+    def test_the_finding_names_the_value_that_reached_the_wire(self, mock_post):
+        """The report and the request must describe the same payload."""
+        mock_post.return_value = rpc_response(VALID_RPC)
+
+        code, out, _err = run_cli(
+            [
+                "probe",
+                "https://example.com/a2a",
+                "--method",
+                "tasks/get",
+                "--params",
+                "[]",
+            ]
+        )
+
+        sent = mock_post.call_args.kwargs["json"]["params"]
+        assert sent == [], f"the wire carried {sent!r}, not the typed []"
+        assert "params must be a JSON object, got list" in out
+        # The finding is about the request, not the endpoint, so an endpoint
+        # that answers it correctly is still compliant.
+        assert code == 0
+
+    @patch("a2a_drift.httpx.post")
+    def test_an_explicit_null_is_sent_as_no_params(self, mock_post):
+        """``null`` is not a Structured value, so it is sent as no params.
+
+        Pinned because it is the one falsy JSON value that *is* Python's
+        ``None``: JSON-RPC 2.0 requires ``params`` to be an object or array
+        when present, and ``validate_method_request`` already reads ``None`` as
+        "no params". The alternative -- transmitting ``params: null`` -- would
+        put a value the spec disallows on the wire.
+        """
+        mock_post.return_value = rpc_response(VALID_RPC)
+
+        code, out, _err = run_cli(
+            [
+                "probe",
+                "https://example.com/a2a",
+                "--method",
+                "tasks/get",
+                "--params",
+                "null",
+            ]
+        )
+
+        payload = mock_post.call_args.kwargs["json"]
+        assert "params" not in payload
+        assert "params.id is required by method 'tasks/get'" in out
+        assert code == 0
+
+
 class TestBatchFileErrors:
     """A batch file that cannot be read must be reported, not raised."""
 

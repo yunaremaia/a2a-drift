@@ -185,7 +185,15 @@ def main() -> None:
     probe_parser.add_argument(
         "--method", default="message/send", help="JSON-RPC method"
     )
-    probe_parser.add_argument("--params", default="{}", help="JSON params")
+    probe_parser.add_argument(
+        "--params",
+        default=None,
+        help=(
+            "JSON params to send, verbatim. Omit the flag to send a request "
+            "with no 'params' member at all; a falsy value such as 0, false, "
+            '[] or "" is sent as given rather than replaced by {}'
+        ),
+    )
     probe_parser.add_argument(
         "--notification",
         action="store_true",
@@ -247,10 +255,21 @@ def main() -> None:
         sys.exit(0 if result.is_compliant else 1)
 
     elif args.command == "probe":
-        try:
-            params = json.loads(args.params) if args.params else {}
-        except json.JSONDecodeError as e:
-            parser.error(f"--params is not valid JSON: {e}")
+        # "not supplied" and "supplied a falsy value" are different inputs, so
+        # they are told apart by identity here rather than by truthiness: the
+        # argparse default is None precisely so that omitting --params is
+        # distinguishable from `--params 0`, `--params false` or `--params []`.
+        # An empty string is not valid JSON and keeps its existing meaning of
+        # "no params content", which is an explicit empty object.
+        if args.params is None:
+            params = None
+        elif not args.params:
+            params = {}
+        else:
+            try:
+                params = json.loads(args.params)
+            except json.JSONDecodeError as e:
+                parser.error(f"--params is not valid JSON: {e}")
         prober = EndpointProber(
             args.url,
             timeout=args.timeout,

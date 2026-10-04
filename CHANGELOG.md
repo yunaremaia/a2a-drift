@@ -22,6 +22,13 @@ All notable changes to this project will be documented in this file.
 - `to_sarif()` in `a2a_drift/cli.py`; `check`, `probe` and `batch` accept `--format sarif`.
 - `--output` is now honored by the `probe` subcommand.
 - CI now tests Python 3.9, the floor declared in `pyproject.toml`.
+- A `[dev]` extra in `pyproject.toml`, so `pip install -e ".[dev]"` installs
+  the tools this project is developed with instead of silently installing
+  nothing. Before it existed the documented setup command installed only the
+  package: pip *warns* on an unknown extra and still exits 0, so the gap was
+  invisible, and CI hid it by naming `pytest`, `pytest-cov`, `ruff` and `mypy`
+  in its own install steps. `test_packaging.py` now fails if CI installs a tool
+  the extra does not declare, so the two cannot drift apart.
 - `test_packaging.py` fails if `requires-python` and the CI matrix drift apart, or
   if 3.10+-only syntax (PEP 604 `X | None` unions) sneaks into the package.
 - A coverage floor of 100% is enforced from `pyproject.toml`
@@ -37,6 +44,19 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `probe` sends the `params` the operator typed, and says so in its findings.
+  The payload was built with `params or {}`, which tested *truthiness* instead
+  of absence, so every falsy JSON value -- `[]`, `0`, `false`, `""` -- was
+  replaced by an empty object on the wire, while `validate_method_request()`
+  was handed the original and named its type. `--params '[]'` reported "params
+  must be a JSON object, got list" for a request the endpoint never received:
+  the report described a probe that was not performed, and the run's
+  JSON-RPC verdict was attributed to the wrong payload. `params` is now
+  forwarded verbatim, and an *absent* value omits the member entirely instead
+  of inventing an empty object, which is what "not supplied" means to
+  `--params`. `--params null` also sends no member: JSON-RPC 2.0 requires
+  `params` to be a Structured value when present, and the validator already
+  read `None` as "no params".
 - A JSON-RPC response whose `id` has the right value but the wrong type is now
   reported as drift. `probe()` sends `"id": 1` and verified the answer with a
   bare `!=`, and Python has `True == 1` and `1.0 == 1`, so an endpoint replying
