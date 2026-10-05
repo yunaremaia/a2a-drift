@@ -212,6 +212,68 @@ class TestRetriesFlag:
         assert out == ""
 
 
+class TestTimeoutFlag:
+    """--timeout is validated at the CLI boundary instead of blaming the target.
+
+    A bare ``type=float`` accepted ``-1``, ``0`` and ``nan``. httpx then
+    rejected the value at request time, and the resulting ``fetch-error`` was an
+    error-severity finding with exit 1 -- indistinguishable from a genuinely
+    non-compliant agent, so a flag typo in CI failed the run with a message
+    pointing at the endpoint. ``--timeout 0`` was worse: httpx accepted it, so
+    the full retry budget and its ``1s + 2s`` sleeps were spent reporting it.
+    """
+
+    @pytest.mark.parametrize("value", ["-1", "0", "nan", "inf"])
+    def test_out_of_range_timeout_is_an_argument_error(self, value):
+        code, out, err = run_cli(
+            ["check", "https://example.com/card.json", "--timeout", value]
+        )
+
+        assert code == 2
+        assert "must be a finite number > 0" in err
+        assert out == ""
+
+    @pytest.mark.parametrize("value", ["-1", "0", "nan"])
+    def test_out_of_range_timeout_is_an_argument_error_for_probe(self, value):
+        code, out, err = run_cli(
+            ["probe", "https://example.com/a2a", "--timeout", value]
+        )
+
+        assert code == 2
+        assert "must be a finite number > 0" in err
+        assert out == ""
+
+    def test_non_numeric_timeout_is_an_argument_error(self):
+        code, _out, err = run_cli(
+            ["check", "https://example.com/card.json", "--timeout", "soon"]
+        )
+
+        assert code == 2
+        assert "'soon' is not a number" in err
+
+    @patch("a2a_drift.httpx.get")
+    def test_rejected_timeout_issues_no_request(self, mock_get):
+        """The value is refused before the checker exists, so no backoff sleeps."""
+        code, _out, _err = run_cli(
+            ["check", "https://example.com/card.json", "--timeout", "0"]
+        )
+
+        assert code == 2
+        mock_get.assert_not_called()
+
+    @patch("a2a_drift.httpx.get")
+    def test_valid_timeout_is_accepted(self, mock_get):
+        mock_get.return_value = card_response(LEGACY_CARD)
+
+        code, _out, err = run_cli(
+            ["check", "https://example.com/card.json", "--timeout", "2.5"]
+        )
+
+        assert code in (0, 1)  # the card is legacy, so 1; the point is not exit 2
+        assert "invalid" not in err
+        assert mock_get.called
+
+
 class TestSpecVersionFlag:
     """--spec-version selects the version drift is measured against."""
 

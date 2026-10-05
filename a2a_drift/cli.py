@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import sys
 
 from a2a_drift import (
@@ -51,6 +52,25 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError(f"{value!r} is not an integer") from None
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    """argparse type for durations that must be a finite, positive number.
+
+    Bare ``float`` accepted ``-1``, ``0`` and ``nan``. httpx rejects those at
+    request time, so the failure surfaced as a ``fetch-error`` finding with
+    exit 1 -- blaming the target for a flag typo, and for ``0`` spending the
+    whole retry budget plus its backoff sleeps to do it. argparse turns
+    ArgumentTypeError into exit code 2, the usage-error exit this README
+    already documents, before any request is issued.
+    """
+    try:
+        parsed = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number > 0")
     return parsed
 
 
@@ -138,9 +158,9 @@ def main() -> None:
         )
         subparser.add_argument(
             "--timeout",
-            type=float,
+            type=_positive_float,
             default=10.0,
-            help="HTTP timeout in seconds (default: 10.0)",
+            help="HTTP timeout in seconds, must be > 0 (default: 10.0)",
         )
         subparser.add_argument(
             "--allow-internal",

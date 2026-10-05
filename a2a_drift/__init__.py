@@ -138,6 +138,13 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
         addresses = socket.getaddrinfo(hostname, None)
     except socket.gaierror:
         return f"could not resolve hostname: {hostname}"
+    except UnicodeError as e:
+        # getaddrinfo raises UnicodeError *before* attempting any resolution
+        # when the hostname will not IDNA-encode (label too long, label
+        # empty). Untrusted input must produce a validation message, never a
+        # traceback -- the neighbouring urlparse handler above is the same
+        # shape, and this keeps every caller's contract intact.
+        return f"invalid hostname: {e}"
 
     for entry in addresses:
         ip = ipaddress.ip_address(entry[4][0])
@@ -423,6 +430,31 @@ class AgentCardChecker:
                     "error",
                     f"Required field {field_name} is empty",
                     path=path,
+                )
+
+        # `url` is the one required field that carries a *format*, so the type
+        # check above cannot be the whole requirement: `not-a-url` is a string
+        # and `javascript:alert(1)` is a string, and both described a card
+        # that names no fetchable endpoint while reporting zero drift and exit
+        # 0. `validate_url` is the check this package already applies to every
+        # other untrusted URL, so the card body is pinned onto it here.
+        #
+        # `allow_internal=True` deliberately: whether a private address is
+        # *reachable* is already a caller policy (`--allow-internal` /
+        # `--deny-internal` against the URL being fetched), and gating the
+        # schema finding on that flag would make it appear and disappear with a
+        # network policy switch. What is asserted here is narrower and
+        # unconditional -- the value is not an http/https URL at all.
+        card_url = card.get("url")
+        if isinstance(card_url, str) and card_url.strip():
+            problem = validate_url(card_url.strip(), allow_internal=True)
+            if problem:
+                result.add_drift(
+                    "schema-violation",
+                    "error",
+                    f"Required field url {card_url!r} is not a usable HTTP(S) URL: "
+                    f"{problem}",
+                    path="$.url",
                 )
 
         # Check spec version. Match the leading major.minor component only:
