@@ -173,7 +173,9 @@ class TestBatchIsolation:
         assert code == 1
 
     @patch("a2a_drift.httpx.get")
-    def test_batch_json_includes_drift_array(self, mock_get, tmp_path, valid_agent_card):
+    def test_batch_json_includes_drift_array(
+        self, mock_get, tmp_path, valid_agent_card
+    ):
         """batch --format json must include the drift array, not just the count."""
         bad_card = {
             "protocolVersion": "0.3",
