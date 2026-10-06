@@ -129,11 +129,9 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
     if parsed.scheme not in ("http", "https"):
         return f"invalid URL scheme: {parsed.scheme or '(none)'}"
     try:
-        port = parsed.port
+        _ = parsed.port
     except ValueError as e:
         return f"invalid URL port: {e}"
-    if port is not None and not (1 <= port <= 65535):
-        return f"invalid URL port: {port}"
     hostname = parsed.hostname
     if not hostname:
         return "invalid URL: no hostname"
