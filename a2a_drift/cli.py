@@ -93,32 +93,34 @@ def _spec_version(value: str) -> str:
     return normalized
 
 
+def _result_payload(result: ValidationResult) -> dict:
+    """Build the JSON-serialisable dict for a validation result."""
+    return {
+        "url": result.url,
+        "is_compliant": result.is_compliant,
+        "spec_version": result.spec_version,
+        "target_spec_version": result.spec_version_target,
+        "jsonrpc_compliant": result.jsonrpc_compliant,
+        "drift_count": len(result.drift),
+        "attempts": result.attempts,
+        "response_time_ms": result.response_time_ms,
+        "drift": [
+            {
+                "type": d.drift_type,
+                "severity": d.severity,
+                "message": d.message,
+                "path": d.path,
+            }
+            for d in result.drift
+        ],
+        "error": result.error,
+    }
+
+
 def _render(result: ValidationResult, output_format: str) -> str:
     """Render a validation result in the requested output format."""
     if output_format == "json":
-        return json.dumps(
-            {
-                "url": result.url,
-                "is_compliant": result.is_compliant,
-                "spec_version": result.spec_version,
-                "target_spec_version": result.spec_version_target,
-                "jsonrpc_compliant": result.jsonrpc_compliant,
-                "drift_count": len(result.drift),
-                "attempts": result.attempts,
-                "response_time_ms": result.response_time_ms,
-                "drift": [
-                    {
-                        "type": d.drift_type,
-                        "severity": d.severity,
-                        "message": d.message,
-                        "path": d.path,
-                    }
-                    for d in result.drift
-                ],
-                "error": result.error,
-            },
-            indent=2,
-        )
+        return json.dumps(_result_payload(result), indent=2)
 
     if output_format == "sarif":
         return json.dumps(to_sarif(result), indent=2)
@@ -346,16 +348,7 @@ def main() -> None:
 
         if args.format == "json":
             out_str = json.dumps(
-                [
-                    {
-                        "url": r.url,
-                        "is_compliant": r.is_compliant,
-                        "spec_version": r.spec_version,
-                        "drift_count": len(r.drift),
-                        "error": r.error,
-                    }
-                    for r in results
-                ],
+                [_result_payload(r) for r in results],
                 indent=2,
             )
         elif args.format == "sarif":
@@ -371,12 +364,17 @@ def main() -> None:
                 indent=2,
             )
         else:
-            out_str = "\n".join(
-                f"[{'✓ COMPLIANT' if r.is_compliant else '✗ NON-COMPLIANT'}] "
-                f"{r.url} ({len(r.drift)} findings)"
-                + (f" — {r.error}" if r.error else "")
-                for r in results
-            )
+            lines = []
+            for r in results:
+                status = "✓ COMPLIANT" if r.is_compliant else "✗ NON-COMPLIANT"
+                lines.append(f"[{status}] {r.url}")
+                if r.error:
+                    lines.append(f"  Error: {r.error}")
+                if r.drift:
+                    lines.append(f"  Drift findings ({len(r.drift)}):")
+                    for d in r.drift:
+                        lines.append(f"    [{d.severity.upper()}] {d.drift_type}: {d.message}")
+            out_str = "\n".join(lines)
 
         if args.output:
             try:

@@ -172,6 +172,58 @@ class TestBatchIsolation:
         assert "good.json" in out
         assert code == 1
 
+    @patch("a2a_drift.httpx.get")
+    def test_batch_json_includes_drift_array(self, mock_get, tmp_path, valid_agent_card):
+        """batch --format json must include the drift array, not just the count."""
+        bad_card = {
+            "protocolVersion": "0.3",
+            "name": "   ",
+            "description": "",
+            "url": "",
+            "version": "1.0.0",
+            "capabilities": {},
+        }
+        mock_get.return_value = card_response(bad_card)
+
+        urls = tmp_path / "agents.txt"
+        urls.write_text("https://example.com/bad.json\n")
+        code, out, _err = run_cli(
+            ["batch", "--file", str(urls), "--format", "json", "--retries", "1"]
+        )
+
+        results = json.loads(out)
+        assert len(results) == 1
+        assert results[0]["drift_count"] > 0
+        assert "drift" in results[0]
+        assert len(results[0]["drift"]) == results[0]["drift_count"]
+        for finding in results[0]["drift"]:
+            assert "type" in finding
+            assert "severity" in finding
+            assert "message" in finding
+        assert code == 1
+
+    @patch("a2a_drift.httpx.get")
+    def test_text_batch_lists_findings(self, mock_get, tmp_path, valid_agent_card):
+        """batch --format text must show finding details, not just the count."""
+        bad_card = {
+            "protocolVersion": "0.3",
+            "name": "   ",
+            "description": "",
+            "url": "",
+            "version": "1.0.0",
+            "capabilities": {},
+        }
+        mock_get.return_value = card_response(bad_card)
+
+        urls = tmp_path / "agents.txt"
+        urls.write_text("https://example.com/bad.json\n")
+        code, out, _err = run_cli(["batch", "--file", str(urls), "--retries", "1"])
+
+        assert "NON-COMPLIANT" in out
+        assert "Drift findings" in out
+        assert "schema-violation" in out
+        assert code == 1
+
     def test_empty_batch_file_is_not_a_vacuous_success(self, tmp_path):
         urls = tmp_path / "empty.txt"
         urls.write_text("\n  \n")

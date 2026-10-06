@@ -100,6 +100,34 @@ class TestInternalAddressBlocking:
         assert message == "could not resolve hostname: nonexistent.invalid"
 
 
+class TestPortValidation:
+    """A URL with an invalid port is not a usable endpoint."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.org:port/x",
+            "https://example.org:99999/x",
+            "https://example.org:65536/x",
+            "http://example.org:-1/x",
+            "https://example.org:0x10/x",
+        ],
+    )
+    def test_invalid_port_is_rejected(self, url):
+        assert validate_url(url, allow_internal=True) is not None
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.org:8443/x",
+            "https://example.org/x",
+            "http://127.0.0.1:8080/x",
+        ],
+    )
+    def test_valid_port_is_accepted(self, url):
+        assert validate_url(url, allow_internal=True) is None
+
+
 class TestAllowInternalShortCircuit:
     """Internal targets stay reachable, and that path costs no DNS lookup."""
 
