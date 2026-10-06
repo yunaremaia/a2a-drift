@@ -373,7 +373,9 @@ def main() -> None:
                 if r.drift:
                     lines.append(f"  Drift findings ({len(r.drift)}):")
                     for d in r.drift:
-                        lines.append(f"    [{d.severity.upper()}] {d.drift_type}: {d.message}")
+                        lines.append(
+                            f"    [{d.severity.upper()}] {d.drift_type}: {d.message}"
+                        )
             out_str = "\n".join(lines)
 
         if args.output:
