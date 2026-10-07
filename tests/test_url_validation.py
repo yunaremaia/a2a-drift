@@ -127,6 +127,41 @@ class TestPortValidation:
     def test_valid_port_is_accepted(self, url):
         assert validate_url(url, allow_internal=True) is None
 
+    def test_non_integer_port_is_rejected(self):
+        """A bare 'port' literal passes every other check but no HTTP client
+        can fetch it, so it must be rejected here rather than later."""
+        message = validate_url("https://example.org:port/a2a")
+
+        assert message is not None
+        assert message.startswith("invalid URL port:")
+
+    def test_port_zero_is_rejected(self):
+        message = validate_url("http://example.com:0/card.json")
+
+        assert message is not None
+        assert "invalid URL port: 0" in message
+        assert "must be 1-65535" in message
+
+    def test_port_above_65535_is_rejected(self):
+        message = validate_url("http://example.com:65536/card.json")
+
+        assert message is not None
+        assert message.startswith("invalid URL port:")
+
+    def test_port_65535_is_accepted(self):
+        with patch(
+            "a2a_drift.socket.getaddrinfo",
+            return_value=_getaddrinfo("93.184.216.34"),
+        ):
+            assert validate_url("http://example.com:65535/card.json") is None
+
+    def test_port_1_is_accepted(self):
+        with patch(
+            "a2a_drift.socket.getaddrinfo",
+            return_value=_getaddrinfo("93.184.216.34"),
+        ):
+            assert validate_url("http://example.com:1/card.json") is None
+
 
 class TestAllowInternalShortCircuit:
     """Internal targets stay reachable, and that path costs no DNS lookup."""
