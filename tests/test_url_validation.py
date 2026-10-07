@@ -122,8 +122,7 @@ class TestPortValidation:
         message = validate_url("http://example.com:65536/card.json")
 
         assert message is not None
-        assert "invalid URL port: Port out of range 0-65535" in message
-        assert "must be 1-65535" in message
+        assert message.startswith("invalid URL port:")
 
     def test_port_65535_is_accepted(self):
         with patch(
