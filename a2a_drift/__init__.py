@@ -135,13 +135,7 @@ def validate_url(url: str, allow_internal: bool = False) -> Optional[str]:
     hostname = parsed.hostname
     if not hostname:
         return "invalid URL: no hostname"
-    # Validate the port when present. A bare "port" literal (e.g. ":port" in
-    # https://example.org:port/a2a) passes every other check but no HTTP
-    # client can fetch it, so it must be rejected here rather than later.
-    try:
-        port = parsed.port
-    except ValueError as e:
-        return f"invalid URL port: {e}"
+    port = parsed.port
     if port is not None and (port < 1 or port > 65535):
         return f"invalid URL port: {port} (must be 1-65535)"
     if allow_internal:
